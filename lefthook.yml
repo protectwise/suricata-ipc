@@ -1,0 +1,35 @@
+develop:
+  piped: true
+  commands:
+    1_pull_base:
+      run: docker pull ubuntu-xenial:latest
+    2_build:
+      run: docker build --force-rm -t bellini-dev:latest --target development -f docker/Dockerfile .
+    3_develop:
+      run: docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name bellini_dev -v `pwd`:/development bellini-dev
+
+test:
+  piped: true
+  commands:
+    1_pull_base:
+      run: docker pull ubuntu-xenial:latest
+    2_build:
+      run: docker build --force-rm -t bellini-test:latest --target test -f docker/Dockerfile .
+    3_develop:
+      run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name bellini_dev -v `pwd`:/development bellini-test
+
+format:
+  piped: true
+  commands:
+    install:
+      run: rustup component add rustfmt
+    cargo_fmt:
+      run: cargo +nightly fmt --all
+
+pre-push:
+  piped: true
+  commands:
+    install:
+      run: rustup component add rustfmt
+    fmt:
+      run: cargo +nightly fmt --all -- --check
