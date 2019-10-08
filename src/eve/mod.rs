@@ -4,7 +4,6 @@ pub mod reader;
 
 use crate::errors::Error;
 use crate::intel::IdsRule;
-use crate::scorer::Scorer;
 
 use chrono::{DateTime, Utc};
 use pw_thrift::association_id::AssociationId;

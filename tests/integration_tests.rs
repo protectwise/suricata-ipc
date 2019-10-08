@@ -12,10 +12,26 @@ use std::time::{Duration, Instant, SystemTime};
 use bellini::Config as SuricataConfig;
 use bellini::Error;
 use bellini::{IntelCache, Tracer};
+use bellini::intel::IdsKey;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
 const ALERT_SOCKET: &'static str = "suricata.alerts";
+
+struct Rule {
+    key: IdsKey,
+    rule: String,
+}
+
+fn parse_rules() -> Result<Rule, Error> {
+    let rules_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("test.rules");
+    let mut f = File::open(rules_path).map_err(Error::Io)?;
+    f.read_lines().flat_map(|l| {
+        
+    })
+}
 
 struct WrapperPacket<'a> {
     inner: &'a net_parser_rs::PcapRecord<'a>,
