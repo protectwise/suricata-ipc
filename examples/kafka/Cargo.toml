@@ -1,0 +1,11 @@
+[package]
+name = "bellini-example-kafka"
+version = "0.1.0"
+authors = ["Danny Browning <bdbrowning2@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bellini = { path = "../../" }
+kafka = "0.8"
+net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "api-cleanup" }
+tokio = "0.2.0-alpha.6"

@@ -1,19 +1,20 @@
+mod rules;
 mod tracer;
 
+pub use rules::{Rule, Rules};
 pub use tracer::Tracer;
 
 use crate::errors::Error;
-use crate::eve::{Message as EveMessage, Message};
+use crate::eve::Message as EveMessage;
 
 use chrono::DateTime;
 use chrono::Utc;
 use log::info;
-use parser::*;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct IdsKey {
     pub gid: u64,
     pub sid: u64,
@@ -24,26 +25,32 @@ pub enum CachedRule<T> {
     Tracer(&'static str),
 }
 
-impl CachedRule<T> {
+impl<T> CachedRule<T> {
     pub fn rule_bytes(&self) -> &[u8]
         where T: AsRef<[u8]>
     {
         match self {
-            CachedRule::Ids(i) => i.intel.rule.as_ref(),
+            CachedRule::Ids(i) => i.as_ref(),
             CachedRule::Tracer(s) => s.as_bytes(),
         }
     }
 
-    pub fn observed(&self, msg: EveMessage) -> Observed {
+    pub fn observed(&self, msg: EveMessage) -> Observed<T> where T: Clone {
         match self {
-            CachedRule::Ids(r) => Scored::Alert(msg),
-            CachedRule::Tracer(_) => Scored::Tracer(msg.timestamp),
+            CachedRule::Ids(r) => Observed::Alert {
+                rule: r.clone(),
+                message: msg,
+            },
+            CachedRule::Tracer(_) => Observed::Tracer(msg.timestamp),
         }
     }
 }
 
-pub enum Observed {
-    Alert(EveMessage),
+pub enum Observed<T> {
+    Alert {
+        rule: T,
+        message: EveMessage,
+    },
     Tracer(DateTime<Utc>),
 }
 
@@ -54,7 +61,15 @@ pub struct IntelCache<T> {
 const LINE_SEPARATOR: &'static [u8] = &['\n' as _];
 
 impl<T> IntelCache<T> {
-    pub fn materialize_rules<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
+    pub fn observed(&self, msg: EveMessage) -> Option<Observed<T>> where T: Clone {
+        let key = IdsKey {
+            gid: msg.alert.gid,
+            sid: msg.alert.signature_id,
+        };
+        self.inner.get(&key).map(|r| r.observed(msg))
+    }
+
+    pub fn materialize_rules<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> where T: AsRef<[u8]> {
         let p: &Path = path.as_ref();
         let mut f = std::fs::File::create(p).map_err(Error::Io)?;
         for kv in self.inner.iter() {

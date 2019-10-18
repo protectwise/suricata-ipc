@@ -25,7 +25,7 @@ impl Tracer {
         }
     }
 
-    pub fn rule() -> CachedRule {
+    pub fn rule<T>() -> CachedRule<T> {
         CachedRule::Tracer(TRACER_RULE)
     }
 

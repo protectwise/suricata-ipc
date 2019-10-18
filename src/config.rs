@@ -3,17 +3,17 @@ use crate::errors::Error;
 use askama::Template;
 use log::debug;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-pub struct InternalIPs(Vec<String>);
+pub struct InternalIps(Vec<String>);
 
-impl InternalIPs {
+impl InternalIps {
     pub fn new(ips: Vec<String>) -> Self {
-        InternalIPs(ips)
+        InternalIps(ips)
     }
 }
 
-impl std::fmt::Display for InternalIPs {
+impl std::fmt::Display for InternalIps {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let ips = &self.0;
         write!(fmt, "{}", ips.join(","))?;
@@ -26,34 +26,37 @@ impl std::fmt::Display for InternalIPs {
 struct ConfigTemplate<'a> {
     rules: &'a str,
     alerts: &'a str,
-    internal_ips: &'a InternalIPs,
+    suricata_config_path: &'a str,
+    internal_ips: &'a InternalIps,
     stats: &'a str,
     max_pending_packets: &'a str,
 }
 
 /// Configuration options for suricata
-pub struct Config<T: AsRef<Path>> {
+pub struct Config {
     /// Whether statistics should be enabled (output) for suricata
     pub enable_stats: bool,
     /// Path where config will be materialized to
-    pub materialize_config_to: T,
+    pub materialize_config_to: PathBuf,
     /// Path where the suricata executable lives
-    pub exe_path: T,
+    pub exe_path: PathBuf,
     /// Path where the alert socket should reside at
-    pub alert_path: T,
+    pub alert_path: PathBuf,
     /// Path where the rules reside at
-    pub rule_path: T,
+    pub rule_path: PathBuf,
+    /// Path where suricata config resides at (e.g. threshold config)
+    pub suriata_config_path: PathBuf,
     /// Internal ips to use for HOME_NET
-    pub internal_ips: InternalIPs,
+    pub internal_ips: InternalIps,
     /// Max pending packets before suricata will block on incoming packets
     pub max_pending_packets: u16,
 }
 
-impl Default for Config<PathBuf> {
+impl Default for Config {
     fn default() -> Self {
         Config {
             enable_stats: false,
-            materialize_config_to: PathBuf::from("/etc/suricata/pw.yaml"),
+            materialize_config_to: PathBuf::from("/etc/suricata/bellini.yaml"),
             exe_path: {
                 if let Some(e) = std::env::var_os("SURICATA_EXE").map(|s| PathBuf::from(s)) {
                     e
@@ -63,7 +66,8 @@ impl Default for Config<PathBuf> {
             },
             alert_path: PathBuf::from("/tmp/suricata.alerts"),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
-            internal_ips: InternalIPs(vec![
+            suriata_config_path: PathBuf::from("/etc/suricata"),
+            internal_ips: InternalIps(vec![
                 String::from("10.0.0.0/8,172.16.0.0/12"),
                 String::from("e80:0:0:0:0:0:0:0/64"),
                 String::from("127.0.0.1/32"),
@@ -76,25 +80,26 @@ impl Default for Config<PathBuf> {
     }
 }
 
-impl<T: AsRef<Path>> Config<T> {
+impl Config {
     pub fn materialize(&self) -> Result<(), Error> {
-        let rules = self.rule_path.as_ref().to_string_lossy().to_owned();
-        let alerts = self.alert_path.as_ref().to_string_lossy().to_owned();
+        let rules = self.rule_path.to_string_lossy().to_owned();
+        let alerts = self.alert_path.to_string_lossy().to_owned();
+        let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
         let stats = format!("{}", self.enable_stats);
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
             alerts: &alerts,
+            suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
             stats: &stats,
             max_pending_packets: &max_pending_packets,
         };
         debug!("Attempting to render");
         let rendered = template.render().map_err(Error::Askama)?;
-        let p = self.materialize_config_to.as_ref();
-        debug!("Writing output.yaml to {:?}", p);
-        let mut f = std::fs::File::create(p).map_err(Error::Io)?;
+        debug!("Writing output.yaml to {:?}", self.materialize_config_to);
+        let mut f = std::fs::File::create(&self.materialize_config_to).map_err(Error::Io)?;
         f.write(rendered.as_bytes()).map_err(Error::Io)?;
         debug!("Output file written");
         Ok(())
@@ -103,11 +108,11 @@ impl<T: AsRef<Path>> Config<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::InternalIPs;
+    use crate::config::InternalIps;
 
     #[test]
     fn test_internal_ip_display() {
-        let internal_ips = InternalIPs(vec![
+        let internal_ips = InternalIps(vec![
             "169.254.0.0/16".to_owned(),
             "192.168.0.0/16".to_owned(),
             "fc00:0:0:0:0:0:0:0/7".to_owned(),

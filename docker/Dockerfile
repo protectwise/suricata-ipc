@@ -103,13 +103,15 @@ ENTRYPOINT ["/bin/bash"]
 FROM development AS test
 
 ADD /benches benches
+ADD /examples examples
 ADD /resources resources
 ADD /src src
 ADD /templates templates
 ADD /tests tests
 ADD /Cargo.toml .
 
-RUN cargo +nightly fmt --all -- --check
+ENV RUST_VERSION=beta
+RUN cargo +$RUST_VERSION fmt --all -- --check
 
 RUN cargo build --release --manifest-path=Cargo.toml
 

@@ -1,9 +1,10 @@
 use crate::errors::Error;
-use crate::eve::json;
+use crate::eve::{json, Message};
 
 use futures::Stream;
 use log::*;
 use pin_project::pin_project;
+use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio_io::{AsyncBufRead, BufReader};
@@ -19,7 +20,7 @@ pub struct EveReader {
 }
 
 impl Stream for EveReader {
-    type Item = Result<Vec<Vec<u8>>, Error>;
+    type Item = Result<Vec<Result<Message, Error>>, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
@@ -48,6 +49,8 @@ impl Stream for EveReader {
 
                         debug!("Alerts available");
 
+                        let alerts: Vec<_> = alerts.iter().map(|v| Message::try_from(v.as_slice())).collect();
+
                         Poll::Ready(Some(Ok(alerts)))
                     }
                 }
@@ -68,19 +71,17 @@ impl From<UnixStream> for EveReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::StreamExt;
+    use futures::TryStreamExt;
     use tokio::io::AsyncWriteExt as _;
 
-    #[test]
-    fn reads_eve() {
+    #[tokio::test]
+    async fn reads_eve() {
         let _ = env_logger::try_init();
-
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
         let (mut server, client) = tokio::net::UnixStream::pair().expect("Could not build pair");
 
         let send_complete = async move {
-            let bytes = "{\"key1\":\"key with a paren set {}\",\"key2\":12345}{\"another\":\"part being sent\"}".as_bytes();
+            let bytes = r#"{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}},{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}}"#.as_bytes();
 
             server.write_all(bytes).await.expect("Failed to send");
             server.flush().await.expect("Failed to flush");
@@ -88,52 +89,26 @@ mod tests {
             info!("Send complete");
         };
 
-        rt.spawn(send_complete);
+        tokio::spawn(send_complete);
 
-        let fut_alerts = async {
-            let alerts: Vec<_> = EveReader::from(client).collect().await;
-            let alerts: Result<Vec<_>, Error> = alerts.into_iter().collect();
-            let alerts: Vec<_> = alerts?.into_iter().flatten().collect();
-            Ok(alerts) as Result<Vec<Vec<u8>>, Error>
-        };
+        let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
+        let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to get alerts").into_iter().flat_map(|v| v).collect();
+        let alerts = alerts.expect("Failed to parse alerts");
 
-        info!("Waiting for alerts");
-
-        let alerts = rt.block_on(fut_alerts).expect("Failed to receive alerts");
-        let strings: Vec<_> = alerts
-            .into_iter()
-            .map(|v| String::from_utf8(v).expect("Not a valid string"))
-            .collect();
-
-        assert_eq!(
-            strings,
-            vec![
-                "{\"key1\":\"key with a paren set {}\",\"key2\":12345}".to_string(),
-                "{\"another\":\"part being sent\"}".to_string(),
-            ]
-        );
+        assert_eq!(alerts.len(), 2);
     }
 
-    #[test]
-    fn reads_partial_eve() {
+    #[tokio::test]
+    async fn reads_partial_eve() {
         let _ = env_logger::try_init();
-
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
         let (mut server, client) = tokio::net::UnixStream::pair().expect("Could not build pair");
 
-        let fut_alerts = async {
-            let alerts: Vec<_> = EveReader::from(client).collect().await;
-            let alerts: Result<Vec<_>, Error> = alerts.into_iter().collect();
-            let alerts: Vec<_> = alerts?.into_iter().flatten().collect();
-            Ok(alerts) as Result<Vec<Vec<u8>>, Error>
-        };
-
         let send_complete = async move {
             let bytes = vec![
-                "{\"key1\":\"key with a paren set {}\",\"key".as_bytes(),
-                "2\":12345}{\"another\":".as_bytes(),
-                "\"part being sent\"}".as_bytes(),
+                r#"{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-"#.as_bytes(),
+                r#"18T10:48:14.622822-0700"}},{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip""#.as_bytes(),
+                r#":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}}"#.as_bytes(),
             ];
             for b in bytes {
                 let f = server.write_all(b);
@@ -144,42 +119,25 @@ mod tests {
             info!("Send complete");
         };
 
-        rt.block_on(send_complete);
+        tokio::spawn(send_complete);
 
         info!("Waiting for alerts");
 
-        let alerts = rt.block_on(fut_alerts).expect("Failed to receive alerts");
-        let strings: Vec<_> = alerts
-            .into_iter()
-            .map(|v| String::from_utf8(v).expect("Not a valid string"))
-            .collect();
+        let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
+        let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to get alerts").into_iter().flat_map(|v| v).collect();
+        let alerts = alerts.expect("Failed to parse alerts");
 
-        assert_eq!(
-            strings,
-            vec![
-                "{\"key1\":\"key with a paren set {}\",\"key2\":12345}".to_string(),
-                "{\"another\":\"part being sent\"}".to_string(),
-            ]
-        );
+        assert_eq!(alerts.len(), 2);
     }
 
-    #[test]
-    fn reads_single_eve_event() {
+    #[tokio::test]
+    async fn reads_single_eve_event() {
         let _ = env_logger::try_init();
-
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
         let (mut server, client) = tokio::net::UnixStream::pair().expect("Could not build pair");
 
-        let fut_alerts = async {
-            let alerts: Vec<_> = EveReader::from(client).collect().await;
-            let alerts: Result<Vec<_>, Error> = alerts.into_iter().collect();
-            let alerts: Vec<_> = alerts?.into_iter().flatten().collect();
-            Ok(alerts) as Result<Vec<Vec<u8>>, Error>
-        };
-
         let send_complete = async move {
-            let bytes = "{\"key1\":\"key without a return\"}".as_bytes();
+            let bytes = r#"{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}},{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}}"#.as_bytes();
             let f = server.write_all(bytes);
 
             f.await.expect("Failed to send");
@@ -187,19 +145,14 @@ mod tests {
             info!("Send complete");
         };
 
-        rt.spawn(send_complete);
+        tokio::spawn(send_complete);
 
         info!("Waiting for alerts");
 
-        let alerts = rt.block_on(fut_alerts).expect("Failed to receive alerts");
-        let strings: Vec<_> = alerts
-            .into_iter()
-            .map(|v| String::from_utf8(v).expect("Not a valid string"))
-            .collect();
+        let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
+        let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to get alerts").into_iter().flat_map(|v| v).collect();
+        let alerts = alerts.expect("Failed to parse alerts");
 
-        assert_eq!(
-            strings,
-            vec!["{\"key1\":\"key without a return\"}".to_string()]
-        );
+        assert_eq!(alerts.len(), 1);
     }
 }

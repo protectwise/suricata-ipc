@@ -1,15 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use futures::StreamExt;
+use futures::TryStreamExt;
 use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use suricata_rs::config::Config as SuricataConfig;
-use suricata_rs::errors::Error;
-use suricata_rs::intel::parser::{Rule, SensorRules};
-use suricata_rs::intel::IntelCache;
-use suricata_rs::*;
+use bellini::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
@@ -25,7 +20,7 @@ impl<'a> WrapperPacket<'a> {
     }
 }
 
-impl<'a> suricata_rs::ipc::AsIpcPacket for WrapperPacket<'a> {
+impl<'a> AsIpcPacket for WrapperPacket<'a> {
     fn timestamp(&self) -> &std::time::SystemTime {
         &self.inner.timestamp
     }
@@ -37,7 +32,7 @@ impl<'a> suricata_rs::ipc::AsIpcPacket for WrapperPacket<'a> {
 async fn run_ids<T: AsRef<Path>>(
     pcap_path: T,
     nb_packets: usize,
-) -> Result<(usize, Vec<Vec<u8>>), Error> {
+) -> Result<(usize, Vec<EveMessage>), Error> {
     let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let resources_path = cargo_dir.join("resources");
 
@@ -45,17 +40,8 @@ async fn run_ids<T: AsRef<Path>>(
         .expect("Failed to create temp file")
         .into_path();
 
-    let mut file = File::open(resources_path.join("s3.js")).expect("Failed to open rules file");
-    let mut rule_bytes = vec![];
-    file.read_to_end(&mut rule_bytes)
-        .expect("Failed to read rules file");
-
-    let rules: Vec<Rule> = Rule::try_from_slice(&rule_bytes).expect("Failed to parse rules");
-    let sensor_rules = SensorRules {
-        rules: rules,
-        etag: vec![],
-    };
-    let cache: IntelCache = sensor_rules.into();
+    let rules = Rules::from_path(resources_path.join("test.rules")).expect("Failed to read rules");
+    let cache: IntelCache<_> = rules.into();
     let rules = temp_file.join(CUSTOM_RULES);
     cache
         .materialize_rules(rules.clone())
@@ -64,7 +50,7 @@ async fn run_ids<T: AsRef<Path>>(
     let alert_path = temp_file.join(ALERT_SOCKET);
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
-    let mut ids_args = SuricataConfig::default();
+    let mut ids_args = Config::default();
     ids_args.materialize_config_to = suricata_yaml;
     ids_args.alert_path = alert_path;
     ids_args.rule_path = rules;
@@ -75,7 +61,6 @@ async fn run_ids<T: AsRef<Path>>(
     tokio::spawn(ids_output);
 
     let ids_alerts = ids.take_alerts().expect("No alerts");
-    let mut ipc_server = ids.take_ipc_server().expect("No ids ipc server");
 
     let mut f = File::open(pcap_path).expect("Could not open pcap");
     let mut packet_bytes = vec![];
@@ -94,40 +79,23 @@ async fn run_ids<T: AsRef<Path>>(
             .map(|record| WrapperPacket::new(&record))
             .collect::<Vec<_>>()
     });
-    let mut packets_to_send = vec![];
 
-    while let Some(mut packets) = packets_iter.next() {
-        for p in packets.drain(..) {
-            let ipc_packet = suricata_rs::ipc::try_from(&p).expect("Failed to convert");
-            packets_to_send.push(ipc_packet);
-            if packets_to_send.len() == 1000 {
-                let packets = std::mem::replace(&mut packets_to_send, vec![]);
-                packets_sent += packets.len();
-                ipc_server.send(packets).expect("Failed to send");
-                std::thread::sleep(std::time::Duration::from_millis(10));
-                info!("Sent {} packets", packets_sent);
-            }
+    while let Some(ref packets) = packets_iter.next() {
+        packets_sent += ids.send(packets).expect("Failed to send packets");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        info!("Sent {} packets", packets_sent);
 
-            if packets_sent >= nb_packets {
-                break;
-            }
+        if packets_sent >= nb_packets {
+            break;
         }
     }
 
-    if !packets_to_send.is_empty() {
-        let packets = std::mem::replace(&mut packets_to_send, vec![]);
-        packets_sent += packets.len();
-        ipc_server.send(packets).expect("Failed to send");
-    }
-
     info!("Packets sent, closing connection");
+    ids.close()?;
 
-    let mut ipc_pin = Pin::new(&mut ipc_server);
-    ipc_pin.close().expect("Failed to close");
-
-    let alerts: Vec<Result<Vec<_>, Error>> = ids_alerts.collect().await;
-    let alerts: Result<Vec<_>, Error> = alerts.into_iter().collect();
-    let alerts: Vec<_> = alerts?.into_iter().flatten().collect();
+    let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
+    let alerts: Result<Vec<_>, Error> = alerts?.into_iter().flat_map(|v| v).collect();
+    let alerts = alerts?;
 
     info!("Finished collecting alerts");
 
@@ -140,7 +108,10 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
 
         let rt = tokio::runtime::Runtime::new().expect("Could not create runtime");
 
-        let pcap_path = pcaps::get_pcap_path("4SICS-GeekLounge-151020.pcap");
+        let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let pcap_path = cargo_dir
+            .join("resources")
+            .join("4SICS-GeekLounge-151020.pcap");
 
         b.iter(|| {
             let f = run_ids(pcap_path.clone(), 50000);

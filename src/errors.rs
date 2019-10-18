@@ -10,6 +10,8 @@ pub enum Error {
     Utf8(#[fail(cause)] std::string::FromUtf8Error),
     #[fail(display = "SystemTime error")]
     SystemTime(#[fail(cause)] std::time::SystemTimeError),
+    #[fail(display = "ParseInt error")]
+    ParseInt(#[fail(cause)] std::num::ParseIntError),
     #[fail(display = "Serde json conversion error")]
     SerdeJson(#[fail(cause)] serde_json::Error),
     #[fail(display = "IPC error")]
@@ -20,6 +22,8 @@ pub enum Error {
     RuleNotFound { gid: u64, sid: u64 },
     #[fail(display = "Askama error")]
     Askama(#[fail(cause)] askama::Error),
+    #[fail(display = "{}", msg)]
+    Custom { msg: String },
 }
 
 unsafe impl Sync for Error {}
