@@ -2,14 +2,16 @@ version: "3.7"
 services:
   zookeeper:
     container_name: zookeeper_${CI_JOB_ID:-bellini}
-    image: zookeeper
+    image: confluentinc/cp-zookeeper:5.2.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
     networks:
       - compose_bellini
-    ports:
-      - "2181:2181"
+    expose:
+      - "2181"
   kafka:
     container_name: kafka_${CI_JOB_ID:-bellini}
-    image: wurstmeister/kafka:2.12-2.3.0
+    image: confluentinc/cp-kafka:5.2.1
     environment:
       KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
       KAFKA_CREATE_TOPICS: "bellini"
@@ -23,17 +25,20 @@ services:
   bellini:
     image: "${IMAGE_ID:-bellini}"
     build:
-      context: ../../
-      dockerfile: docker/Dockerfile
+      context: ../
+      dockerfile: ./docker/Dockerfile
       args:
         - RUST_VERSION=${RUST_VERSION:-beta}
+    environment:
+      KAFKA_CONNECT: "kafka:9092"
     entrypoint: /bin/bash
-    command: ./wait-for-it.sh kafka:9092 -t 360 -- cargo test --release
+    command: ./wait-for-it.sh kafka:9092 -t 360 -- cargo run --release
     container_name: bellini_${CI_JOB_ID:-bellini}
     networks:
-      - compose_service_discovery
+      - compose_bellini
     depends_on:
       - zookeeper
+      - kafka
 
 networks:
   compose_bellini:

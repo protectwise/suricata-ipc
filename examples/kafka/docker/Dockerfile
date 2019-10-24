@@ -1,4 +1,4 @@
-FROM ubuntu:xenial AS system-setup
+FROM ubuntu:bionic AS system-setup
 
 WORKDIR /build
 
@@ -45,9 +45,8 @@ RUN apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 
     dh-autoreconf \
     libprelude-dev \
     liblua5.1-0-dev \
-    hardening-wrapper \
     wget \
-    build-essential
+    build-essential \
   && rm -rf /var/lib/apt || true
 
 ENV RUST_BACKTRACE=1 \
@@ -58,17 +57,17 @@ ENV RUST_BACKTRACE=1 \
 ARG RUST_VERSION=beta
 RUN RUST_VERSION=$RUST_VERSION curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain $RUST_VERSION -y
 
-RUN rustup component add --toolchain $RUST_VERSION rustfmt && cargo install cargo-release
+RUN rustup component add --toolchain $RUST_VERSION rustfmt \
+  && cargo install cargo-release \
+  && cargo install cbindgen
 
 FROM system-setup AS build-suricata
-
-WORKDIR $BUILD_DIR
 
 #Checkout suricata
 ARG SURICATA_VERSION=5.0.0
 RUN SURICATA_VERSION=$SURICATA_VERSION git clone https://github.com/dbcfd/suricata
 
-WORKDIR $BUILD_DIR/suricata
+WORKDIR /build/suricata
 
 RUN git pull && git checkout -b sensicata origin/sensicata
 
@@ -82,15 +81,13 @@ RUN sh autogen.sh \
   --with-libpcre-includes=/usr/local/include --with-libpcre-libraries=/usr/lib --disable-gccmarch-native \
   && make \
   && make install \
-  && make install-conf \
-  && cp $BUILD_DIR
-  && rm -rf $BUILD_DIR/suricata
+  && make install-conf
 
 RUN /usr/bin/suricata -V
 
 ENV SURICATA_EXE=/usr/bin/suricata
 
-FROM suricata-setup AS development
+FROM build-suricata AS development
 
 ENV RUST_LOG=bellini=debug
 
@@ -102,12 +99,7 @@ ENTRYPOINT ["/bin/bash"]
 
 FROM development AS test
 
-ADD /benches benches
-ADD /examples examples
-ADD /resources resources
 ADD /src src
-ADD /templates templates
-ADD /tests tests
 ADD /Cargo.toml .
 
 ENV RUST_VERSION=beta
@@ -115,5 +107,5 @@ RUN cargo +$RUST_VERSION fmt --all -- --check
 
 RUN cargo build --release --manifest-path=Cargo.toml
 
-ENTRYPOINT [ "cargo"]
-CMD ["test", "--release", "--manifest-path=Cargo.toml"]
+ENTRYPOINT [ "run"]
+CMD ["--release", "--manifest-path=Cargo.toml"]

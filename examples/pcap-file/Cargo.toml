@@ -7,6 +7,5 @@ edition = "2018"
 [dependencies]
 bellini = { path = "../../" }
 futures-preview = { version = "0.3.0-alpha.19", features = ["async-await"] }
-kafka = "0.8"
-net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "api-cleanup" }
+net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "master" }
 tokio = "0.2.0-alpha.6"

@@ -4,7 +4,7 @@ develop:
     1_pull_base:
       run: docker pull ubuntu-xenial:latest
     2_build:
-      run: docker build --force-rm -t bellini-dev:latest --target development -f docker/Dockerfile .
+      run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-beta} -t bellini-dev:latest --target development -f docker/Dockerfile .
     3_develop:
       run: docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name bellini_dev -v `pwd`:/development bellini-dev
 
@@ -14,7 +14,7 @@ test:
     1_pull_base:
       run: docker pull ubuntu-xenial:latest
     2_build:
-      run: docker build --force-rm -t bellini-test:latest --target test -f docker/Dockerfile .
+      run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-beta} -t bellini-test:latest --target test -f docker/Dockerfile .
     3_develop:
       run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name bellini_dev -v `pwd`:/development bellini-test
 
@@ -24,7 +24,7 @@ format:
     install:
       run: rustup component add rustfmt
     cargo_fmt:
-      run: cargo +nightly fmt --all
+      run: cargo +${RUST_VERSION:-beta} fmt --all
 
 pre-push:
   piped: true
@@ -32,4 +32,4 @@ pre-push:
     install:
       run: rustup component add rustfmt
     fmt:
-      run: cargo +nightly fmt --all -- --check
+      run: cargo +${RUST_VERSION:-beta} fmt --all -- --check
