@@ -5,7 +5,7 @@ authors = ["Danny Browning <bdbrowning2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bellini = { path = "../../" }
+bellini = { git = "https://dbcfd:0aec2c8ecb94e901d09fa5218fd0dbc6a1ec5827@github.com/dbcfd/bellini.git" }
 env_logger = "0.7"
 futures-preview = { version = "0.3.0-alpha.19", features = ["async-await"] }
 log = "0.4"
