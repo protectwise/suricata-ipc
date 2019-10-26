@@ -1,6 +1,8 @@
-use rdkafka::ClientConfig;
-use rdkafka::async_support::*;
 use bellini::prelude::EveMessage;
+use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
+use rdkafka::async_support::*;
+use rdkafka::client::DefaultClientContext;
+use rdkafka::ClientConfig;
 
 const BELLINI_TOPIC: &'static str = "bellini";
 
@@ -15,18 +17,26 @@ pub struct ProduceResult {
 }
 
 impl Producer {
-    pub fn new() -> Self {
-        let bootstrap_servers = std::env::var("KAFKA_CONNECT")
-            .unwrap_or("kafka:9092".to_owned());
-        let producer: FutureProducer = ClientConfig::new()
-            .set("bootstrap.servers", &bootstrap_servers)
+    pub async fn new() -> Self {
+        //connect
+        let bootstrap_servers = std::env::var("KAFKA_CONNECT").unwrap_or("kafka:9092".to_owned());
+        let mut cfg = ClientConfig::new();
+        cfg.set("bootstrap.servers", &bootstrap_servers)
             .set("produce.offset.report", "true")
-            .set("message.timeout.ms", "5000")
-            .create()
-            .expect("Producer creation error");
-        Self {
-            producer: producer,
-        }
+            .set("message.timeout.ms", "5000");
+
+        let topic1 = NewTopic::new(BELLINI_TOPIC, 1, TopicReplication::Fixed(0));
+        let admin: AdminClient<DefaultClientContext> = cfg.create().expect("Admin creation error");
+        admin
+            .create_topics(&[topic1], &AdminOptions::new())
+            .await
+            .expect("Failed to create topic");
+
+        let producer: FutureProducer = cfg.create().expect("Producer creation error");
+
+        //create our topic
+
+        Self { producer: producer }
     }
 
     pub async fn produce(&self, message: EveMessage) -> ProduceResult {
@@ -41,7 +51,10 @@ impl Producer {
             headers: None,
         };
         match self.producer.send(record, 100).await {
-            Ok(Ok((partition, offset))) => ProduceResult { offset: offset, partition: partition },
+            Ok(Ok((partition, offset))) => ProduceResult {
+                offset: offset,
+                partition: partition,
+            },
             Ok(Err((e, _))) => panic!("Failed to produce record: {:?}", e),
             Err(e) => panic!("Error waiting for produced record: {:?}", e),
         }

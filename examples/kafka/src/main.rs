@@ -12,16 +12,20 @@ use log::*;
 async fn main() {
     let _ = env_logger::try_init();
 
-    let producer = kafka::Producer::new();
+    let producer = kafka::Producer::new().await;
 
     let resources = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().expect("Invalid path")
-        .parent().expect("Invalid path")
+        .parent()
+        .expect("Invalid path")
+        .parent()
+        .expect("Invalid path")
         .join("resources");
     let config = Config::default();
     let rules = Rules::from_path(resources.join("test.rules")).expect("Could not parse rules");
     let cache: IntelCache<Rule> = rules.into();
-    cache.materialize_rules(config.rule_path.clone()).expect("Failed to materialize rules");
+    cache
+        .materialize_rules(config.rule_path.clone())
+        .expect("Failed to materialize rules");
 
     let mut ids = Ids::new(config).await.expect("Failed to create ids");
     let mut ids_alerts = ids.take_alerts().expect("No alerts");

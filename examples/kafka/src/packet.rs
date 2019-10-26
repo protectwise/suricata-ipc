@@ -26,8 +26,10 @@ pub async fn send_packets(ids: Ids) {
 
     let cargo_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pcap_path = cargo_dir
-        .parent().expect("No parent")
-        .parent().expect("No parent")
+        .parent()
+        .expect("No parent")
+        .parent()
+        .expect("No parent")
         .join("resources")
         .join("testmyids.pcap");
 
@@ -48,7 +50,9 @@ pub async fn send_packets(ids: Ids) {
     });
 
     while let Some(ref packets) = packets.next() {
-        packets_sent += ids.send(packets.as_slice()).expect("Failed to send packets");
+        packets_sent += ids
+            .send(packets.as_slice())
+            .expect("Failed to send packets");
         tokio::timer::delay_for(std::time::Duration::from_millis(10)).await;
         info!("Sent {} packets", packets_sent);
     }

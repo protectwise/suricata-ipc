@@ -13,11 +13,14 @@ services:
     container_name: kafka_${CI_JOB_ID:-bellini}
     image: confluentinc/cp-kafka:5.2.1
     environment:
-      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
-      KAFKA_CREATE_TOPICS: "bellini"
-      KAFKA_ADVERTISED_HOST_NAME: "kafka"
-    entrypoint: /bin/bash
-    command: ./wait-for-it.sh zookeeper:2181 -t 360 -- sh start-kafka.sh
+      KAFKA_BROKER_ID: 0
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_HOST:-kafka}:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_NUM_PARTITIONS: 3
+      CONFLUENT_SUPPORT_METRICS_ENABLE: 0
+    depends_on:
+      - zookeeper
     networks:
       - compose_bellini
     ports:

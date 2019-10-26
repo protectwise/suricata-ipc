@@ -4,7 +4,7 @@ kafka:
     1_build:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yml build
     2_kafka_up:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yml up -d kafka
+      run: CI_JOB_ID=$CI_JOB_ID KAFKA_HOST=localhost docker-compose -f docker/docker-compose.yml up -d kafka
 
 down:
   piped: true
@@ -17,11 +17,27 @@ develop:
   commands:
     1_build:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml build
-    2_haproxy_up:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml up -d haproxy
-    3_manager_up:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name manager --entrypoint "tail -f /dev/null" -d -v `pwd`:/development manager
+    2_kafka_up:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml up -d kafka
+    3_bellini_up:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name bellini --entrypoint "tail -f /dev/null" -d -v `pwd`:/development bellini
     4_connect:
-      run: docker exec -it manager /bin/bash
+      run: docker exec -it bellini /bin/bash
     4_down:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml down
+
+format:
+  piped: true
+  commands:
+    install:
+      run: rustup component add rustfmt
+    cargo_fmt:
+      run: cargo +${RUST_VERSION:-beta} fmt --all
+
+pre-push:
+  piped: true
+  commands:
+    install:
+      run: rustup component add rustfmt
+    fmt:
+      run: cargo +${RUST_VERSION:-beta} fmt --all -- --check
