@@ -97,7 +97,7 @@ VOLUME ["/development"]
 
 ENTRYPOINT ["/bin/bash"]
 
-FROM development AS test
+FROM development AS run
 
 ADD /src src
 ADD /Cargo.toml .

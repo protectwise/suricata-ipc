@@ -15,7 +15,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 0
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_HOST:-kafka}:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_HOST:-localhost}:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_NUM_PARTITIONS: 3
       CONFLUENT_SUPPORT_METRICS_ENABLE: 0
@@ -32,6 +32,7 @@ services:
       dockerfile: ./docker/Dockerfile
       args:
         - RUST_VERSION=${RUST_VERSION:-beta}
+        - TARGET=${TARGET:-run}
     environment:
       KAFKA_CONNECT: "kafka:9092"
     entrypoint: /bin/bash

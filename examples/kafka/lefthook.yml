@@ -16,13 +16,25 @@ develop:
   piped: true
   commands:
     1_build:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml build
+      run: TARGET=development CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml build
     2_kafka_up:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml up -d kafka
     3_bellini_up:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name bellini --entrypoint "tail -f /dev/null" -d -v `pwd`:/development bellini
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name bellini-dev --entrypoint "tail -f /dev/null" -d -v `pwd`:/development bellini
     4_connect:
-      run: docker exec -it bellini /bin/bash
+      run: docker exec -it bellini-dev /bin/bash
+    4_down:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml down
+
+run:
+  piped: true
+  commands:
+    1_build:
+      run: TARGET=run CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml build
+    2_kafka_up:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml up -d kafka
+    3_bellini_up:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name bellini-dev --abort-on-container-exit bellini
     4_down:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml down
 

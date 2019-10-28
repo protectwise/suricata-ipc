@@ -29,10 +29,14 @@ async fn main() {
 
     let mut ids = Ids::new(config).await.expect("Failed to create ids");
     let mut ids_alerts = ids.take_alerts().expect("No alerts");
+    if let Some(o) = ids.take_output() {
+        tokio::spawn(o);
+    }
 
     tokio::spawn(packet::send_packets(ids));
 
     while let Some(try_alert) = ids_alerts.next().await {
+        debug!("Alert received");
         let alerts = try_alert.expect("Failed to receive alert");
         for try_alert in alerts {
             let alert = try_alert.expect("Could not parse alert");

@@ -24,6 +24,8 @@ impl<'a> AsIpcPacket for WrapperPacket<'a> {
 pub async fn send_packets(ids: Ids) {
     let mut ids = ids;
 
+    tokio::timer::delay_for(std::time::Duration::from_secs(1)).await;
+
     let cargo_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pcap_path = cargo_dir
         .parent()
