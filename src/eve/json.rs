@@ -27,6 +27,8 @@ impl JsonParser {
                     if Category::Eof == e.classify() {
                         return Ok((&buffer[last_good_offset..buffer.len()], values));
                     } else {
+                        let s = String::from_utf8_lossy(&buffer[last_good_offset..buffer.len()]);
+                        log::debug!("Failed to deserialize: {}", s);
                         return Err(Error::SerdeJson(e));
                     }
                 }

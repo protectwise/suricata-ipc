@@ -233,17 +233,17 @@ async fn ids_process_testmyids() {
     for eve in result.alerts {
         assert_eq!(
             eve.src_ip,
-            "10.151.223.136"
+            "82.165.177.154"
                 .parse::<std::net::IpAddr>()
                 .expect("Failed to parse")
         );
         assert_eq!(
             eve.dest_ip,
-            "203.0.113.99"
+            "10.16.1.11"
                 .parse::<std::net::IpAddr>()
                 .expect("Failed to parse")
         );
-        assert_eq!(eve.alert.signature_id, 600074);
+        assert_eq!(eve.alert.signature_id, 2100498);
         assert!(result.intel_cache.observed(eve).is_some());
     }
 

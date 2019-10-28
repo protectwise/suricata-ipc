@@ -23,16 +23,16 @@ impl AsRef<[u8]> for Rule {
 }
 
 lazy_static! {
-    pub static ref SID_REGEX: Regex = Regex::from_str(r#".+sid\:\s*(\d+);.+"#).expect("Bad regex");
-    pub static ref GID_REGEX: Regex = Regex::from_str(r#".+gid\:\s*(\d+);.+"#).expect("Bad regex");
+    pub static ref SID_REGEX: Regex = Regex::from_str(r#".+sid\s*:\s*(\d+);.+"#).expect("Bad regex");
+    pub static ref GID_REGEX: Regex = Regex::from_str(r#".+gid\s*:\s*(\d+);.+"#).expect("Bad regex");
 }
 
 fn parse_rule(line: &str) -> Result<Rule, Error> {
     let caps = SID_REGEX.captures(line).ok_or(Error::Custom { msg: format!("No sid: {}", line) })?;
-    let sid = caps.get(0).ok_or(Error::Custom { msg: format!("No sid: {}", line) })?;
-    let sid = u64::from_str(sid.as_str()).map_err(Error::ParseInt)?;
+    let sid = &caps[1];
+    let sid = u64::from_str(sid).map_err(Error::ParseInt)?;
     let gid = if let Some(gid) = GID_REGEX.captures(line) {
-        u64::from_str(&gid[0]).map_err(Error::ParseInt)?
+        u64::from_str(&gid[1]).map_err(Error::ParseInt)?
     } else {
         1
     };
@@ -94,17 +94,18 @@ mod tests {
     use std::path::PathBuf;
     #[test]
     fn parse_rules() {
+        let _ = env_logger::try_init();
         let rules_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
             .join("test.rules");
 
         let rules = Rules::from_path(rules_path).expect("Failed to get rules");
 
-        assert_eq!(rules.len(), 10);
+        assert_eq!(rules.len(), 20);
 
         let cache: IntelCache<Rule> = rules.into();
 
-        assert!(cache.inner.get(&IdsKey { gid: 1, sid: 1}).is_some());
-        assert!(cache.inner.get(&IdsKey { gid: 1, sid: 2}).is_some());
+        assert!(cache.inner.get(&IdsKey { gid: 1, sid: 3003002}).is_some());
+        assert!(cache.inner.get(&IdsKey { gid: 1, sid: 3016009}).is_some());
     }
 }
