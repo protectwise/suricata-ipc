@@ -49,7 +49,10 @@ impl Stream for EveReader {
 
                         debug!("Alerts available");
 
-                        let alerts: Vec<_> = alerts.iter().map(|v| Message::try_from(v.as_slice())).collect();
+                        let alerts: Vec<_> = alerts
+                            .iter()
+                            .map(|v| Message::try_from(v.as_slice()))
+                            .collect();
 
                         Poll::Ready(Some(Ok(alerts)))
                     }
@@ -92,7 +95,11 @@ mod tests {
         tokio::spawn(send_complete);
 
         let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
-        let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to get alerts").into_iter().flat_map(|v| v).collect();
+        let alerts: Result<Vec<_>, Error> = alerts
+            .expect("Failed to get alerts")
+            .into_iter()
+            .flat_map(|v| v)
+            .collect();
         let alerts = alerts.expect("Failed to parse alerts");
 
         assert_eq!(alerts.len(), 2);
@@ -124,7 +131,11 @@ mod tests {
         info!("Waiting for alerts");
 
         let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
-        let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to get alerts").into_iter().flat_map(|v| v).collect();
+        let alerts: Result<Vec<_>, Error> = alerts
+            .expect("Failed to get alerts")
+            .into_iter()
+            .flat_map(|v| v)
+            .collect();
         let alerts = alerts.expect("Failed to parse alerts");
 
         assert_eq!(alerts.len(), 2);
@@ -150,7 +161,11 @@ mod tests {
         info!("Waiting for alerts");
 
         let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
-        let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to get alerts").into_iter().flat_map(|v| v).collect();
+        let alerts: Result<Vec<_>, Error> = alerts
+            .expect("Failed to get alerts")
+            .into_iter()
+            .flat_map(|v| v)
+            .collect();
         let alerts = alerts.expect("Failed to parse alerts");
 
         assert_eq!(alerts.len(), 1);

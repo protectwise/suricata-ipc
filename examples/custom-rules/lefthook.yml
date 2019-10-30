@@ -1,0 +1,15 @@
+format:
+  piped: true
+  commands:
+    install:
+      run: rustup component add rustfmt
+    cargo_fmt:
+      run: cargo +${RUST_VERSION:-beta} fmt --all
+
+pre-push:
+  piped: true
+  commands:
+    install:
+      run: rustup component add rustfmt
+    fmt:
+      run: cargo +${RUST_VERSION:-beta} fmt --all -- --check

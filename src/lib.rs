@@ -3,7 +3,10 @@
 //! Provide access to suricata via a library-like interface. Allows packets to be sent to suricata
 //! and alerts received.
 //!
-//! ```rust,no-run
+//! ```rust
+//! # use bellini::prelude::*;
+//! # use futures::TryStreamExt;
+//! # use std::path::PathBuf;
 //! #[tokio::main]
 //! async fn main() {
 //!     let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -42,11 +45,11 @@ mod eve;
 mod intel;
 
 pub mod prelude {
-    pub use super::Ids;
     pub use super::config::Config;
     pub use super::errors::Error;
-    pub use super::eve::{Message as EveMessage, EveReader};
-    pub use super::intel::{IntelCache, Observed, Rule, Rules, Tracer};
+    pub use super::eve::{EveReader, Message as EveMessage};
+    pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
+    pub use super::Ids;
     pub use packet_ipc::packet::AsIpcPacket;
 
     pub use chrono;
@@ -89,12 +92,16 @@ impl Drop for IdsProcess {
 
 impl Ids {
     pub fn send<T: AsIpcPacket>(&mut self, packets: &[T]) -> Result<usize, Error> {
-        let ipc_packets: Result<Vec<_>, Error> = packets.iter().map(|p| {
-            packet_ipc::packet::IpcPacket::try_from(p).map_err(Error::PacketIpc)
-        }).collect();
+        let ipc_packets: Result<Vec<_>, Error> = packets
+            .iter()
+            .map(|p| packet_ipc::packet::IpcPacket::try_from(p).map_err(Error::PacketIpc))
+            .collect();
         let ipc_packets = ipc_packets?;
         let packets_sent = ipc_packets.len();
-        self.ipc_server.send(ipc_packets).map_err(Error::PacketIpc).map(|_| packets_sent)
+        self.ipc_server
+            .send(ipc_packets)
+            .map_err(Error::PacketIpc)
+            .map(|_| packets_sent)
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
@@ -133,14 +140,9 @@ impl Ids {
         args.materialize()?;
 
         let ipc = format!("--ipc={}", server_name);
-        let mut command =
-            tokio_net::process::Command::new(args.exe_path.to_str().unwrap());
+        let mut command = tokio_net::process::Command::new(args.exe_path.to_str().unwrap());
         command
-            .args(&[
-                "-c",
-                args.materialize_config_to.to_str().unwrap(),
-                &ipc,
-            ])
+            .args(&["-c", args.materialize_config_to.to_str().unwrap(), &ipc])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped());

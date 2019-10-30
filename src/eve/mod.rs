@@ -2,8 +2,8 @@ mod date_format;
 mod json;
 mod reader;
 
-pub use reader::EveReader as EveReader;
 use crate::errors::Error;
+pub use reader::EveReader;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

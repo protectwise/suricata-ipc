@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "key": {
+        "gid": 1,
+        "sid": 2100498
+      },
+      "rule": "alert ip any any -> any any (msg:\"GPL ATTACK_RESPONSE id check returned root\"; content:\"uid=0|28|root|29|\"; fast_pattern:only; classtype:bad-unknown; gid:1; sid:2100498; rev:8;)",
+      "metadata": "http://http://blog.testmyids.com/"
+    }
+  ]
+}

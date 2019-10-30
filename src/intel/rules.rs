@@ -1,14 +1,14 @@
+use crate::intel::{CachedRule, IdsKey, IntelCache, Tracer};
 use crate::Error;
-use crate::intel::{IdsKey, IntelCache, CachedRule, Tracer};
 
 use lazy_static::lazy_static;
 use log::*;
 use regex::Regex;
-use std::fs::File;
-use std::path::Path;
-use std::io::{BufRead, BufReader};
-use std::str::FromStr;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::str::FromStr;
 
 #[derive(Clone, Debug)]
 pub struct Rule {
@@ -23,12 +23,16 @@ impl AsRef<[u8]> for Rule {
 }
 
 lazy_static! {
-    pub static ref SID_REGEX: Regex = Regex::from_str(r#".+sid\s*:\s*(\d+);.+"#).expect("Bad regex");
-    pub static ref GID_REGEX: Regex = Regex::from_str(r#".+gid\s*:\s*(\d+);.+"#).expect("Bad regex");
+    pub static ref SID_REGEX: Regex =
+        Regex::from_str(r#".+sid\s*:\s*(\d+);.+"#).expect("Bad regex");
+    pub static ref GID_REGEX: Regex =
+        Regex::from_str(r#".+gid\s*:\s*(\d+);.+"#).expect("Bad regex");
 }
 
 fn parse_rule(line: &str) -> Result<Rule, Error> {
-    let caps = SID_REGEX.captures(line).ok_or(Error::Custom { msg: format!("No sid: {}", line) })?;
+    let caps = SID_REGEX.captures(line).ok_or(Error::Custom {
+        msg: format!("No sid: {}", line),
+    })?;
     let sid = &caps[1];
     let sid = u64::from_str(sid).map_err(Error::ParseInt)?;
     let gid = if let Some(gid) = GID_REGEX.captures(line) {
@@ -37,10 +41,7 @@ fn parse_rule(line: &str) -> Result<Rule, Error> {
         1
     };
     Ok(Rule {
-        key: IdsKey {
-            gid: gid,
-            sid: sid
-        },
+        key: IdsKey { gid: gid, sid: sid },
         rule: line.to_owned(),
     })
 }
@@ -54,20 +55,19 @@ impl Rules {
         let f = File::open(path.as_ref()).map_err(Error::Io)?;
         let lines: Result<Vec<_>, Error> = BufReader::new(f)
             .lines()
-            .map(|r| {
-                r.map_err(Error::Io)
-            })
+            .map(|r| r.map_err(Error::Io))
             .collect();
         let lines = lines?;
-        let rules: Vec<_> = lines.into_iter().flat_map(|l| {
-            match parse_rule(&l) {
+        let rules: Vec<_> = lines
+            .into_iter()
+            .flat_map(|l| match parse_rule(&l) {
                 Ok(r) => Some(r),
                 Err(e) => {
                     warn!("Failed to parse rule '{}': {:?}", l, e);
                     None
                 }
-            }
-        }).collect();
+            })
+            .collect();
         Ok(Self { inner: rules })
     }
 
@@ -78,13 +78,13 @@ impl Rules {
 
 impl Into<IntelCache<Rule>> for Rules {
     fn into(self) -> IntelCache<Rule> {
-        let mut map: HashMap<IdsKey, CachedRule<Rule>> = self.inner.into_iter().map(|r| {
-            (r.key.clone(), CachedRule::Ids(r))
-        }).collect();
+        let mut map: HashMap<IdsKey, CachedRule<Rule>> = self
+            .inner
+            .into_iter()
+            .map(|r| (r.key.clone(), CachedRule::Ids(r)))
+            .collect();
         map.insert(Tracer::key(), Tracer::rule::<Rule>());
-        IntelCache {
-            inner: map,
-        }
+        IntelCache { inner: map }
     }
 }
 
@@ -105,7 +105,19 @@ mod tests {
 
         let cache: IntelCache<Rule> = rules.into();
 
-        assert!(cache.inner.get(&IdsKey { gid: 1, sid: 3003002}).is_some());
-        assert!(cache.inner.get(&IdsKey { gid: 1, sid: 3016009}).is_some());
+        assert!(cache
+            .inner
+            .get(&IdsKey {
+                gid: 1,
+                sid: 3003002
+            })
+            .is_some());
+        assert!(cache
+            .inner
+            .get(&IdsKey {
+                gid: 1,
+                sid: 3016009
+            })
+            .is_some());
     }
 }

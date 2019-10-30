@@ -27,7 +27,8 @@ pub enum CachedRule<T> {
 
 impl<T> CachedRule<T> {
     pub fn rule_bytes(&self) -> &[u8]
-        where T: AsRef<[u8]>
+    where
+        T: AsRef<[u8]>,
     {
         match self {
             CachedRule::Ids(i) => i.as_ref(),
@@ -35,7 +36,10 @@ impl<T> CachedRule<T> {
         }
     }
 
-    pub fn observed(&self, msg: EveMessage) -> Observed<T> where T: Clone {
+    pub fn observed(&self, msg: EveMessage) -> Observed<T>
+    where
+        T: Clone,
+    {
         match self {
             CachedRule::Ids(r) => Observed::Alert {
                 rule: r.clone(),
@@ -47,10 +51,7 @@ impl<T> CachedRule<T> {
 }
 
 pub enum Observed<T> {
-    Alert {
-        rule: T,
-        message: EveMessage,
-    },
+    Alert { rule: T, message: EveMessage },
     Tracer(DateTime<Utc>),
 }
 
@@ -61,7 +62,10 @@ pub struct IntelCache<T> {
 const LINE_SEPARATOR: &'static [u8] = &['\n' as _];
 
 impl<T> IntelCache<T> {
-    pub fn observed(&self, msg: EveMessage) -> Option<Observed<T>> where T: Clone {
+    pub fn observed(&self, msg: EveMessage) -> Option<Observed<T>>
+    where
+        T: Clone,
+    {
         let key = IdsKey {
             gid: msg.alert.gid,
             sid: msg.alert.signature_id,
@@ -69,7 +73,10 @@ impl<T> IntelCache<T> {
         self.inner.get(&key).map(|r| r.observed(msg))
     }
 
-    pub fn materialize_rules<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> where T: AsRef<[u8]> {
+    pub fn materialize_rules<P: AsRef<Path>>(&self, path: P) -> Result<(), Error>
+    where
+        T: AsRef<[u8]>,
+    {
         let p: &Path = path.as_ref();
         let mut f = std::fs::File::create(p).map_err(Error::Io)?;
         for kv in self.inner.iter() {

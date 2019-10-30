@@ -1,12 +1,12 @@
 #![deny(unused_must_use, unused_imports, bare_trait_objects)]
 use async_trait::async_trait;
+use bellini::prelude::*;
 use futures::TryStreamExt;
 use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
-use bellini::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
@@ -39,20 +39,14 @@ struct TestResult {
 
 #[async_trait]
 trait TestRunner {
-    async fn run<'a>(
-        &'a mut self,
-        ids: &'a mut Ids,
-    ) -> usize;
+    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize;
 }
 
 struct TracerTestRunner;
 
 #[async_trait]
 impl TestRunner for TracerTestRunner {
-    async fn run<'a>(
-        &'a mut self,
-        ids: &'a mut Ids,
-    ) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
         send_tracer(ids, SystemTime::now()).await
     }
 }
@@ -61,10 +55,7 @@ struct MultiTracerTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerTestRunner {
-    async fn run<'a>(
-        &'a mut self,
-        ids: &'a mut Ids,
-    ) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
         send_tracers(ids).await
     }
 }
@@ -83,10 +74,7 @@ struct MultiTracerReloadTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerReloadTestRunner {
-    async fn run<'a>(
-        &'a mut self,
-        ids: &'a mut Ids,
-    ) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
         send_tracers_with_reload(ids).await
     }
 }
@@ -131,10 +119,7 @@ impl PcapPathTestRunner {
 
 #[async_trait]
 impl TestRunner for PcapPathTestRunner {
-    async fn run<'a>(
-        &'a mut self,
-        ids: &'a mut Ids,
-    ) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
         let (_, f) = net_parser_rs::CaptureFile::parse(self.pcap_bytes()).expect("Failed to parse");
         send_packets_from_file(f.records, ids).await
     }
@@ -156,7 +141,9 @@ async fn send_packets_from_file<'a>(
     });
 
     while let Some(ref packets) = packets.next() {
-        packets_sent += ids.send(packets.as_slice()).expect("Failed to send packets");
+        packets_sent += ids
+            .send(packets.as_slice())
+            .expect("Failed to send packets");
         tokio::timer::delay_for(Duration::from_millis(10)).await;
         info!("Sent {} packets", packets_sent);
     }
@@ -220,9 +207,7 @@ async fn ids_process_testmyids() {
     let _ = env_logger::try_init();
 
     let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pcap_path = cargo_dir
-        .join("resources")
-        .join("testmyids.pcap");
+    let pcap_path = cargo_dir.join("resources").join("testmyids.pcap");
 
     let runner = PcapPathTestRunner::new(pcap_path);
 

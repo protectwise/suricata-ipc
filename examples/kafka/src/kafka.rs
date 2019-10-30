@@ -17,7 +17,8 @@ pub struct ProduceResult {
 impl Producer {
     pub async fn new() -> Self {
         //connect
-        let bootstrap_servers = std::env::var("KAFKA_CONNECT").unwrap_or("localhost:9092".to_owned());
+        let bootstrap_servers =
+            std::env::var("KAFKA_CONNECT").unwrap_or("localhost:9092".to_owned());
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &bootstrap_servers)
             .set("produce.offset.report", "true")
