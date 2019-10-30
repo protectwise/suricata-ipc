@@ -1,4 +1,4 @@
-use bellini::prelude::{IdsKey, IntelCache, Tracer};
+use bellini::prelude::{CachedRule, IdsKey, IntelCache, Tracer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
@@ -35,6 +35,7 @@ impl AsRef<[u8]> for Rule {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Rules {
+    #[serde(rename="rules")]
     inner: Vec<Rule>,
 }
 
@@ -54,8 +55,8 @@ impl Rules {
 
 impl Into<IntelCache<Rule>> for Rules {
     fn into(self) -> IntelCache<Rule> {
-        let mut map: HashMap<IdsKey, CachedRule<Rule>> = self.inner.into_iter().map(|r| {
-            (r.key.clone(), CachedRule::Ids(r))
+        let mut map: HashMap<IdsKey, CachedRule<_>> = self.inner.into_iter().map(|r| {
+            (r.key.as_ids_key(), CachedRule::Ids(r))
         }).collect();
         map.insert(Tracer::key(), Tracer::rule::<Rule>());
         IntelCache {

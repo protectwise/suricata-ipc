@@ -15,7 +15,7 @@ async fn main() {
     let resources = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources");
     let config = Config::default();
-    let rules = CustomRules::from_path(resources.join("test.rules"));
+    let rules = CustomRules::from_path(resources.join("rules.json"));
     let cache: IntelCache<CustomRule> = rules.into();
     cache
         .materialize_rules(config.rule_path.clone())
@@ -38,7 +38,8 @@ async fn main() {
             let gid = alert.alert.gid;
             if let Some(intel) = cache.observed(alert) {
                 if let Observed::Alert { rule, message } = intel {
-                    info!("Rule={:?}   Message={:?}", rule, message);
+                    info!("Rule={:?}", rule);
+                    info!("Message={:?}", message);
                 }
             } else {
                 warn!("Failed to find rule. Gid={}   Sid={}", gid, sid)
