@@ -6,7 +6,7 @@ use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
@@ -39,14 +39,14 @@ struct TestResult {
 
 #[async_trait]
 trait TestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize;
+    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize;
 }
 
 struct TracerTestRunner;
 
 #[async_trait]
 impl TestRunner for TracerTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
         send_tracer(ids, SystemTime::now()).await
     }
 }
@@ -55,17 +55,17 @@ struct MultiTracerTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
         send_tracers(ids).await
     }
 }
 
-async fn send_tracers<'a>(ids: &'a mut Ids) -> usize {
+async fn send_tracers<'a>(ids: &'a Ids<'a>) -> usize {
     let now = SystemTime::now();
     send_tracer(ids, now - Duration::from_secs(600)).await;
-    tokio::timer::delay_for(Duration::from_secs(1)).await;
+    tokio::time::delay_for(Duration::from_secs(1)).await;
     send_tracer(ids, now - Duration::from_secs(300)).await;
-    tokio::timer::delay_for(Duration::from_secs(1)).await;
+    tokio::time::delay_for(Duration::from_secs(1)).await;
     send_tracer(ids, now).await;
     3
 }
@@ -74,23 +74,23 @@ struct MultiTracerReloadTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerReloadTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
         send_tracers_with_reload(ids).await
     }
 }
 
-async fn send_tracers_with_reload<'a>(ids: &'a mut Ids) -> usize {
+async fn send_tracers_with_reload<'a>(ids: &'a Ids<'a>) -> usize {
     let now = SystemTime::now();
     send_tracer(ids, now - Duration::from_secs(600)).await;
-    tokio::timer::delay(Instant::now() + Duration::from_secs(1)).await;
+    tokio::time::delay_for(Duration::from_secs(1)).await;
     assert!(ids.reload_rules());
     send_tracer(ids, now - Duration::from_secs(300)).await;
-    tokio::timer::delay(Instant::now() + Duration::from_secs(1)).await;
+    tokio::time::delay_for(Duration::from_secs(1)).await;
     send_tracer(ids, now).await;
     3
 }
 
-async fn send_tracer<'a>(ids: &'a mut Ids, ts: SystemTime) -> usize {
+async fn send_tracer<'a>(ids: &'a Ids<'a>, ts: SystemTime) -> usize {
     let data = Tracer::data().to_vec();
     let p = net_parser_rs::PcapRecord::new(ts, data.len() as _, data.len() as _, &data);
     ids.send(&[WrapperPacket::new(&p)]).expect("Failed to send");
@@ -119,7 +119,7 @@ impl PcapPathTestRunner {
 
 #[async_trait]
 impl TestRunner for PcapPathTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a mut Ids) -> usize {
+    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
         let (_, f) = net_parser_rs::CaptureFile::parse(self.pcap_bytes()).expect("Failed to parse");
         send_packets_from_file(f.records, ids).await
     }
@@ -127,7 +127,7 @@ impl TestRunner for PcapPathTestRunner {
 
 async fn send_packets_from_file<'a>(
     records: net_parser_rs::PcapRecords<'a>,
-    ids: &'a mut Ids,
+    ids: &'a Ids<'a>,
 ) -> usize {
     let mut packets_sent = 0;
 
@@ -144,7 +144,7 @@ async fn send_packets_from_file<'a>(
         packets_sent += ids
             .send(packets.as_slice())
             .expect("Failed to send packets");
-        tokio::timer::delay_for(Duration::from_millis(10)).await;
+        tokio::time::delay_for(Duration::from_millis(10)).await;
         info!("Sent {} packets", packets_sent);
     }
 
@@ -187,7 +187,7 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
     info!("Packets sent, closing connection");
     ids.close()?;
 
-    tokio::timer::delay_for(std::time::Duration::from_secs(5));
+    tokio::time::delay_for(std::time::Duration::from_secs(5)).await;
 
     let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
     let alerts: Result<Vec<_>, Error> = alerts?.into_iter().flat_map(|v| v).collect();

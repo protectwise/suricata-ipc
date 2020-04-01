@@ -74,14 +74,9 @@ async fn run_ids<T: AsRef<Path>>(
     info!("Sending packets to ids");
 
     let records = file.records.into_inner();
-    let mut packets_iter = records.chunks(100).map(|r| {
-        r.iter()
-            .map(|record| WrapperPacket::new(&record))
-            .collect::<Vec<_>>()
-    });
-
-    while let Some(ref packets) = packets_iter.next() {
-        packets_sent += ids.send(packets).expect("Failed to send packets");
+    for chunk in records.chunks(100) {
+        let packets: Vec<_> = chunk.iter().map(|record| WrapperPacket::new(&record)).collect();
+        packets_sent += ids.send(packets.as_slice()).expect("Failed to send packets");
         std::thread::sleep(std::time::Duration::from_millis(10));
         info!("Sent {} packets", packets_sent);
 
@@ -106,7 +101,7 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
     let benchmark = criterion::Benchmark::new("ids", |b| {
         let _ = env_logger::try_init();
 
-        let rt = tokio::runtime::Runtime::new().expect("Could not create runtime");
+        let mut rt = tokio::runtime::Runtime::new().expect("Could not create runtime");
 
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pcap_path = cargo_dir

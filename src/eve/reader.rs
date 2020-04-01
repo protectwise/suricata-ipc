@@ -7,15 +7,15 @@ use pin_project::pin_project;
 use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio_io::{AsyncBufRead, BufReader};
-use tokio_net::uds::UnixStream;
+use tokio::io::{AsyncBufRead, BufReader};
+use tokio::net::UnixStream;
 
 const BUFFER_SIZE: usize = 1_000_000;
 
 #[pin_project]
 pub struct EveReader {
     #[pin]
-    inner: tokio_io::BufReader<UnixStream>,
+    inner: tokio::io::BufReader<UnixStream>,
     buf: Vec<u8>,
 }
 

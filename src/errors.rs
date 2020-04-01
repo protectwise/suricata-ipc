@@ -15,7 +15,7 @@ pub enum Error {
     #[fail(display = "Serde json conversion error")]
     SerdeJson(#[fail(cause)] serde_json::Error),
     #[fail(display = "IPC error")]
-    PacketIpc(#[fail(cause)] packet_ipc::errors::Error),
+    PacketIpc(#[fail(cause)] packet_ipc::Error),
     #[fail(display = "No UDS connection formed")]
     NoUDSConnection,
     #[fail(display = "No rule found: {}:{}", gid, sid)]

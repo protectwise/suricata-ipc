@@ -50,30 +50,31 @@ pub mod prelude {
     pub use super::eve::{EveReader, Message as EveMessage};
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
     pub use super::Ids;
-    pub use packet_ipc::packet::AsIpcPacket;
+    pub use packet_ipc::AsIpcPacket;
 
     pub use chrono;
 }
 
-use futures::{self, Future, FutureExt, StreamExt};
+use std::future::Future;
+use futures::{self, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
 use std::{path::PathBuf, pin::Pin};
-use tokio_io::{AsyncBufReadExt, BufReader};
-use tokio_net::uds::UnixListener;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::net::UnixListener;
 
-pub struct Ids {
+pub struct Ids<'a> {
     reader: Option<EveReader>,
     process: Option<IdsProcess>,
-    ipc_server: packet_ipc::server::ConnectedIpc,
+    ipc_server: packet_ipc::ConnectedIpc<'a>,
     output: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
-unsafe impl Send for Ids {}
-unsafe impl Sync for Ids {}
+unsafe impl<'a> Send for Ids<'a> {}
+unsafe impl<'a> Sync for Ids<'a> {}
 
 pub struct IdsProcess {
-    pub inner: tokio_net::process::Child,
+    pub inner: tokio::process::Child,
     alert_path: PathBuf,
 }
 
@@ -90,18 +91,11 @@ impl Drop for IdsProcess {
     }
 }
 
-impl Ids {
-    pub fn send<T: AsIpcPacket>(&mut self, packets: &[T]) -> Result<usize, Error> {
-        let ipc_packets: Result<Vec<_>, Error> = packets
-            .iter()
-            .map(|p| packet_ipc::packet::IpcPacket::try_from(p).map_err(Error::PacketIpc))
-            .collect();
-        let ipc_packets = ipc_packets?;
-        let packets_sent = ipc_packets.len();
-        self.ipc_server
-            .send(ipc_packets)
-            .map_err(Error::PacketIpc)
-            .map(|_| packets_sent)
+impl<'a> Ids<'a> {
+    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
+        let packets_sent = packets.len();
+        self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
+        Ok(packets_sent)
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
@@ -124,23 +118,22 @@ impl Ids {
         }
     }
 
-    pub async fn new(args: Config) -> Result<Ids, Error> {
+    pub async fn new(args: Config) -> Result<Ids<'a>, Error> {
         if args.alert_path.exists() {
             std::fs::remove_file(&args.alert_path).map_err(Error::Io)?;
         }
 
         //need a one shot server name to give to suricata
-        let server = packet_ipc::server::Server::new().map_err(Error::PacketIpc)?;
+        let server = packet_ipc::Server::new().map_err(Error::PacketIpc)?;
         let server_name = server.name().clone();
 
         //need an alert socket that suricata can connect to
-        let uds_listener = UnixListener::bind(args.alert_path.clone()).map_err(Error::Io)?;
-        let mut incoming_connection = uds_listener.incoming();
+        let mut uds_listener = UnixListener::bind(args.alert_path.clone()).map_err(Error::Io)?;
 
         args.materialize()?;
 
         let ipc = format!("--ipc={}", server_name);
-        let mut command = tokio_net::process::Command::new(args.exe_path.to_str().unwrap());
+        let mut command = tokio::process::Command::new(args.exe_path.to_str().unwrap());
         command
             .args(&["-c", args.materialize_config_to.to_str().unwrap(), &ipc])
             .stdin(std::process::Stdio::null())
@@ -150,7 +143,7 @@ impl Ids {
         let mut process = command.spawn().map_err(Error::Io)?;
 
         let mut stdout_complete = {
-            let o = process.stdout().take().unwrap();
+            let o = process.stdout.take().unwrap();
             let reader = BufReader::new(o);
             let pid = process.id();
             reader
@@ -164,7 +157,7 @@ impl Ids {
                 .fuse()
         };
         let mut stderr_complete = {
-            let o = process.stderr().take().unwrap();
+            let o = process.stderr.take().unwrap();
             let reader = BufReader::new(o);
             let pid = process.id();
             reader
@@ -195,13 +188,9 @@ impl Ids {
 
         debug!("Waiting on uds connection from suricata");
 
-        let uds_connection = if let Some(c) = incoming_connection.next().await {
-            c.map_err(Error::Io)?
-        } else {
-            return Err(Error::NoUDSConnection);
-        };
+        let (uds_connection, uds_addr) = uds_listener.accept().await.map_err(Error::Io)?;
 
-        debug!("UDS connection formed from {:?}", uds_connection);
+        debug!("UDS connection formed from {:?}", uds_addr);
 
         Ok(Ids {
             reader: Some(uds_connection.into()),
