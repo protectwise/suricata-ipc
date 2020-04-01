@@ -35,6 +35,7 @@ jobs:
           libyaml-dev \
           libjansson-dev \
           zlib1g-dev
+        cargo install --force cbindgen
     - name: Build Suricata
       working-directory: suricata
       run: autoreconf -i && ./configure --with-unix-socket && sudo make install && sudo make install-conf
