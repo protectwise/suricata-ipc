@@ -24,6 +24,8 @@ jobs:
       with:
         repository: OISF/libhtp
         path: suricata/libhtp
+    - name: Install Required libraries
+      run: apt-get update && apt-get install -y libyaml-dev
     - name: Build Suricata
       working-directory: suricata
       run: autoreconf -i && ./configure --with-unix-socket && make install && make install-conf
