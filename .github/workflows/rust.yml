@@ -30,7 +30,6 @@ jobs:
         sudo apt-get install -y \
           libpcap-dev \
           libpcre3 \
-          libpcre3-dbg \
           libpcre3-dev \
           libmagic-dev \
           libyaml-dev \
