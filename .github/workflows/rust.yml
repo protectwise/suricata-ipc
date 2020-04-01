@@ -35,7 +35,8 @@ jobs:
           libyaml-dev \
           libjansson-dev \
           zlib1g-dev
-        cargo install --force cbindgen
+        cargo install --list
+        source $HOME/.cargo/env
     - name: Build Suricata
       working-directory: suricata
       run: autoreconf -i && ./configure --with-unix-socket && sudo make install && sudo make install-conf
