@@ -37,7 +37,7 @@ jobs:
           zlib1g-dev
     - name: Build Suricata
       working-directory: suricata
-      run: autoreconf -i && ./configure --with-unix-socket && make install && make install-conf
+      run: autoreconf -i && ./configure --with-unix-socket && sudo make install && sudo make install-conf
     - name: Format
       run: cargo fmt --all -- --check
     - name: Build
