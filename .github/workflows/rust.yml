@@ -30,12 +30,22 @@ jobs:
         apt-get update
         apt-get install -y \
           curl \
-          libpcap-dev \
+          build-essential \
+          autoconf \
+          automake \
+          make \
+          gcc \
+          git \
+          libtool \
           libpcre3 \
           libpcre3-dev \
-          libmagic-dev \
+          libpcap-dev \
+          libnet1-dev \
+          libyaml-0-2 \
           libyaml-dev \
+          libmagic-dev \
           libjansson-dev \
+          zlib1g \
           zlib1g-dev
     - name: Install rust and tools
       run: |
