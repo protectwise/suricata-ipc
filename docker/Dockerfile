@@ -55,7 +55,7 @@ ENV RUST_BACKTRACE=1 \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-ARG RUST_VERSION=beta
+ARG RUST_VERSION=stable
 RUN RUST_VERSION=$RUST_VERSION curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain $RUST_VERSION -y
 
 RUN rustup component add --toolchain $RUST_VERSION rustfmt && cargo install cargo-release

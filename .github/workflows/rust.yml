@@ -29,6 +29,7 @@ jobs:
       run: |
         apt-get update
         apt-get install -y \
+          curl \
           libpcap-dev \
           libpcre3 \
           libpcre3-dev \
@@ -36,9 +37,12 @@ jobs:
           libyaml-dev \
           libjansson-dev \
           zlib1g-dev
-    - name: Install cbindgen
-      run: cargo install --force cbindgen
-    - run: echo "::add-path::$HOME/.cargo/bin"
+    - name: Install rust and tools
+      run: |
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
+        echo "::add-path::$HOME/.cargo/bin"
+        rustup component add rustfmt
+        cargo install --force cbindgen
     - name: Build Suricata
       working-directory: suricata
       run: autoreconf -i && ./configure --with-unix-socket && make install && make install-conf

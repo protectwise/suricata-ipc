@@ -1,6 +1,6 @@
 use crate::intel::{CachedRule, IdsKey};
 
-const TRACER_RULE: &'static str = r#"alert udp 10.1.10.39 54999 -> 75.75.75.75 53 (msg:"PW Tracer Packet 2"; content:"dannysmagictracerpkt|02|pw"; classtype:attempted-user; gid:1; sid:69041501; rev:1;)"#;
+const TRACER_RULE: &'static str = r#"alert udp 10.1.10.39 54999 -> 75.75.75.75 53 (msg:"Tracer Packet 2"; content:"dannysmagictracerpkt|02|pw"; classtype:attempted-user; gid:1; sid:69041501; rev:1;)"#;
 const TRACER_DATA: &'static [u8] = &[
     0xc4u8, 0x04u8, 0x15u8, 0x31u8, 0xd6u8, 0xbbu8, 0xc8u8, 0xe0u8, /* ...1.... */
     0xebu8, 0x17u8, 0xe0u8, 0x07u8, 0x08u8, 0x00u8, 0x45u8, 0x00u8, /* ......E. */
