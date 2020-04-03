@@ -4,9 +4,9 @@ develop:
     1_pull_base:
       run: docker pull ubuntu-xenial:latest
     2_build:
-      run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t bellini-dev:latest --target development -f docker/Dockerfile .
+      run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t suricata-rs-dev:latest --target development -f docker/Dockerfile .
     3_develop:
-      run: docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name bellini_dev -v `pwd`:/development bellini-dev
+      run: docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name suricata_rs_dev -v `pwd`:/development suricata-rs-dev
 
 test:
   piped: true
@@ -14,9 +14,9 @@ test:
     1_pull_base:
       run: docker pull ubuntu-xenial:latest
     2_build:
-      run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t bellini-test:latest --target test -f docker/Dockerfile .
+      run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t suricata-rs-test:latest --target test -f docker/Dockerfile .
     3_develop:
-      run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name bellini_dev -v `pwd`:/development bellini-test
+      run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name suricata_rs_dev -v `pwd`:/development suricata-rs-test
 
 format:
   piped: true

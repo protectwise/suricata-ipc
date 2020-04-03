@@ -1,8 +1,8 @@
-use bellini::prelude::EveMessage;
+use suricata_rs::prelude::EveMessage;
 use rdkafka::async_support::*;
 use rdkafka::ClientConfig;
 
-const BELLINI_TOPIC: &'static str = "bellini";
+const SURICATA_RS_TOPIC: &'static str = "bellini";
 
 pub struct Producer {
     producer: FutureProducer,
@@ -33,7 +33,7 @@ impl Producer {
         let payload = serde_json::to_string(&message).expect("Failed to serialize");
         let key = format!("{}:{}", message.alert.gid, message.alert.signature_id);
         let record = FutureRecord {
-            topic: BELLINI_TOPIC,
+            topic: SURICATA_RS_TOPIC,
             partition: None,
             payload: Some(&payload),
             key: Some(&key),

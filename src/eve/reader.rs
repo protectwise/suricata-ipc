@@ -1,5 +1,5 @@
 use crate::errors::Error;
-use crate::eve::{json, Message};
+use crate::eve::{json, EveMessage};
 
 use futures::Stream;
 use log::*;
@@ -20,7 +20,7 @@ pub struct EveReader {
 }
 
 impl Stream for EveReader {
-    type Item = Result<Vec<Result<Message, Error>>, Error>;
+    type Item = Result<Vec<Result<EveMessage, Error>>, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
@@ -51,7 +51,7 @@ impl Stream for EveReader {
 
                         let alerts: Vec<_> = alerts
                             .iter()
-                            .map(|v| Message::try_from(v.as_slice()))
+                            .map(|v| EveMessage::try_from(v.as_slice()))
                             .collect();
 
                         Poll::Ready(Some(Ok(alerts)))

@@ -1,10 +1,10 @@
-//! # Bellini
+//! # suricata-rs
 //!
 //! Provide access to suricata via a library-like interface. Allows packets to be sent to suricata
 //! and alerts received.
 //!
 //! ```rust
-//! # use bellini::prelude::*;
+//! # use suricata_rs::prelude::*;
 //! # use futures::TryStreamExt;
 //! # use std::path::PathBuf;
 //! #[tokio::main]
@@ -47,7 +47,7 @@ mod intel;
 pub mod prelude {
     pub use super::config::Config;
     pub use super::errors::Error;
-    pub use super::eve::{EveReader, Message as EveMessage};
+    pub use super::eve::{EveReader, EveAlert, EveEventType, EveMessage, EveStats};
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
     pub use super::Ids;
     pub use packet_ipc::AsIpcPacket;
@@ -55,10 +55,10 @@ pub mod prelude {
     pub use chrono;
 }
 
-use std::future::Future;
 use futures::{self, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
+use std::future::Future;
 use std::{path::PathBuf, pin::Pin};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixListener;
@@ -106,7 +106,7 @@ impl<'a> Ids<'a> {
         self.output.take()
     }
 
-    pub fn take_alerts(&mut self) -> Option<EveReader> {
+    pub fn take_messages(&mut self) -> Option<EveReader> {
         self.reader.take()
     }
 
@@ -179,8 +179,8 @@ impl<'a> Ids<'a> {
 
             info!("Suricata closed");
         }
-            .fuse()
-            .boxed();
+        .fuse()
+        .boxed();
 
         let connected_ipc = server.accept().map_err(Error::PacketIpc)?;
 

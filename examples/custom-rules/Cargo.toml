@@ -1,16 +1,16 @@
 [package]
-name = "bellini-example-rules"
+name = "suricata-rs-example-rules"
 version = "0.1.0"
-authors = ["Danny Browning <bdbrowning2@gmail.com>"]
+authors = ["dbcfd <bdbrowning2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bellini = { git = "https://dbcfd:0aec2c8ecb94e901d09fa5218fd0dbc6a1ec5827@github.com/dbcfd/bellini.git" }
+suricata-rs = { git = "https://dbcfd:0aec2c8ecb94e901d09fa5218fd0dbc6a1ec5827@github.com/dbcfd/suricata-rs.git" }
 env_logger = "0.7"
-futures-preview = { version = "0.3.0-alpha.19", features = ["async-await"] }
+futures = "0.3"
 log = "0.4"
 net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "master" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = "0.2.0-alpha.6"
+tokio = { version = "0.2", features = ["macros", "rt-threaded"] }
 url = { version = "2.1", features = ["serde"] }

@@ -29,6 +29,7 @@ struct ConfigTemplate<'a> {
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
     stats: &'a str,
+    flows: bool,
     max_pending_packets: &'a str,
 }
 
@@ -36,6 +37,8 @@ struct ConfigTemplate<'a> {
 pub struct Config {
     /// Whether statistics should be enabled (output) for suricata
     pub enable_stats: bool,
+    /// Whether flows should be enabled (output) for suricata
+    pub enable_flows: bool,
     /// Path where config will be materialized to
     pub materialize_config_to: PathBuf,
     /// Path where the suricata executable lives
@@ -55,8 +58,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            enable_stats: false,
-            materialize_config_to: PathBuf::from("/etc/suricata/bellini.yaml"),
+            enable_stats: true,
+            enable_flows: true,
+            materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {
                 if let Some(e) = std::env::var_os("SURICATA_EXE").map(|s| PathBuf::from(s)) {
                     e
@@ -86,7 +90,11 @@ impl Config {
         let alerts = self.alert_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
-        let stats = format!("{}", self.enable_stats);
+        let stats = if self.enable_stats {
+            "yes"
+        } else {
+            "no"
+        };
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
@@ -94,6 +102,7 @@ impl Config {
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
             stats: &stats,
+            flows: self.enable_flows,
             max_pending_packets: &max_pending_packets,
         };
         debug!("Attempting to render");

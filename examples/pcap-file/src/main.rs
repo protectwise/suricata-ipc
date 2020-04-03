@@ -1,7 +1,7 @@
 //! # Pcap File Example
-//! Example of reading packets from a file, passing them to suricata via bellini, and receiving
+//! Example of reading packets from a file, passing them to suricata via suricata-rs, and receiving
 //! alerts
-use bellini::prelude::*;
+use suricata_rs::prelude::*;
 use futures::TryStreamExt;
 use std::io::Read;
 

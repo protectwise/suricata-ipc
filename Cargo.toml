@@ -1,8 +1,15 @@
 [package]
-name = "bellini"
+name = "suricata-rs"
 version = "0.1.0"
-authors = ["Danny Browning <bdbrowning2@gmail.com>"]
+authors = ["dbcfd <bdbrowning2@gmail.com>"]
 edition = "2018"
+description = "Library for sending packets to suricata and receiving output."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/protectwise/net-parser-rs/"
+readme = "README.md"
+keywords=["pcap","packet","network"]
+categories=["encoding","network-programming","parsing"]
+exclude = ["resources/4SICS-GeekLounge-151020.pcap"]
 
 [dependencies]
 askama = "0.8"

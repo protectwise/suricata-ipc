@@ -1,16 +1,16 @@
 version: "3.7"
 services:
   zookeeper:
-    container_name: zookeeper_${CI_JOB_ID:-bellini}
+    container_name: zookeeper_${CI_JOB_ID:-suricata-rs}
     image: confluentinc/cp-zookeeper:5.2.1
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
     networks:
-      - compose_bellini
+      - compose_suricata_rs
     expose:
       - "2181"
   kafka:
-    container_name: kafka_${CI_JOB_ID:-bellini}
+    container_name: kafka_${CI_JOB_ID:-suricata-rs}
     image: confluentinc/cp-kafka:5.2.1
     environment:
       KAFKA_BROKER_ID: 0
@@ -22,11 +22,11 @@ services:
     depends_on:
       - zookeeper
     networks:
-      - compose_bellini
+      - compose_suricata_rs
     ports:
       - "9092:9092"
-  bellini:
-    image: "${IMAGE_ID:-bellini}"
+  suricata-rs:
+    image: "${IMAGE_ID:-suricata-rs}"
     build:
       context: ../
       dockerfile: ./docker/Dockerfile
@@ -37,14 +37,14 @@ services:
       KAFKA_CONNECT: "kafka:9092"
     entrypoint: /bin/bash
     command: ./wait-for-it.sh kafka:9092 -t 360 -- cargo run --release
-    container_name: bellini_${CI_JOB_ID:-bellini}
+    container_name: suricata-rs_${CI_JOB_ID:-suricata-rs}
     networks:
-      - compose_bellini
+      - compose_suricata_rs
     depends_on:
       - zookeeper
       - kafka
 
 networks:
-  compose_bellini:
+  compose_suricata_rs:
     driver: bridge
 

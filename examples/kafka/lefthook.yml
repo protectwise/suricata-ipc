@@ -19,10 +19,10 @@ develop:
       run: TARGET=development CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml build
     2_kafka_up:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml up -d kafka
-    3_bellini_up:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name bellini-dev --entrypoint "tail -f /dev/null" -d -v `pwd`:/development bellini
+    3_suricata_rs_up:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name suricata-rs-dev --entrypoint "tail -f /dev/null" -d -v `pwd`:/development suricata-rs
     4_connect:
-      run: docker exec -it bellini-dev /bin/bash
+      run: docker exec -it suricata-rs-dev /bin/bash
     4_down:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml down
 
@@ -33,8 +33,8 @@ run:
       run: TARGET=run CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml build
     2_kafka_up:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml up -d kafka
-    3_bellini_up:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name bellini-dev --abort-on-container-exit bellini
+    3_suricata_rs_up:
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml run --rm --name suricata-rs-dev --abort-on-container-exit suricata-rs
     4_down:
       run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yaml down
 
@@ -44,7 +44,7 @@ format:
     install:
       run: rustup component add rustfmt
     cargo_fmt:
-      run: cargo +${RUST_VERSION:-beta} fmt --all
+      run: cargo +${RUST_VERSION:-stable} fmt --all
 
 pre-push:
   piped: true
@@ -52,4 +52,4 @@ pre-push:
     install:
       run: rustup component add rustfmt
     fmt:
-      run: cargo +${RUST_VERSION:-beta} fmt --all -- --check
+      run: cargo +${RUST_VERSION:-stable} fmt --all -- --check

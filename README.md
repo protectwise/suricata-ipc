@@ -1,4 +1,4 @@
-# bellini
+# suricata-rs
 
 Library to enable packet sharing with suricata, and reading alerts from an eve
 socket. Alerts read can then use an intel cache to determine additional metadata

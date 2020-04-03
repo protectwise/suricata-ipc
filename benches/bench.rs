@@ -1,4 +1,4 @@
-use bellini::prelude::*;
+use suricata_rs::prelude::*;
 use criterion::{criterion_group, criterion_main, Criterion};
 use futures::TryStreamExt;
 use log::*;
@@ -60,7 +60,7 @@ async fn run_ids<T: AsRef<Path>>(
 
     tokio::spawn(ids_output);
 
-    let ids_alerts = ids.take_alerts().expect("No alerts");
+    let ids_messages = ids.take_messages().expect("No alerts");
 
     let mut f = File::open(pcap_path).expect("Could not open pcap");
     let mut packet_bytes = vec![];
@@ -75,8 +75,13 @@ async fn run_ids<T: AsRef<Path>>(
 
     let records = file.records.into_inner();
     for chunk in records.chunks(100) {
-        let packets: Vec<_> = chunk.iter().map(|record| WrapperPacket::new(&record)).collect();
-        packets_sent += ids.send(packets.as_slice()).expect("Failed to send packets");
+        let packets: Vec<_> = chunk
+            .iter()
+            .map(|record| WrapperPacket::new(&record))
+            .collect();
+        packets_sent += ids
+            .send(packets.as_slice())
+            .expect("Failed to send packets");
         std::thread::sleep(std::time::Duration::from_millis(10));
         info!("Sent {} packets", packets_sent);
 
@@ -88,13 +93,13 @@ async fn run_ids<T: AsRef<Path>>(
     info!("Packets sent, closing connection");
     ids.close()?;
 
-    let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
-    let alerts: Result<Vec<_>, Error> = alerts?.into_iter().flat_map(|v| v).collect();
-    let alerts = alerts?;
+    let messages: Result<Vec<_>, Error> = ids_messages.try_collect().await;
+    let messages: Result<Vec<_>, Error> = messages?.into_iter().flat_map(|v| v).collect();
+    let messages = messages?;
 
     info!("Finished collecting alerts");
 
-    Ok((packets_sent, alerts))
+    Ok((packets_sent, messages))
 }
 
 fn bench_ids_process_4sics(c: &mut Criterion) {
@@ -111,10 +116,10 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
         b.iter(|| {
             let f = run_ids(pcap_path.clone(), 50000);
 
-            let (packets_sent, alerts) = rt.block_on(f).expect("Failed to run");
+            let (packets_sent, messages) = rt.block_on(f).expect("Failed to run");
 
             assert!(packets_sent >= 50000);
-            assert_eq!(alerts.len(), 0);
+            assert_eq!(messages.len(), 0);
         })
     });
 

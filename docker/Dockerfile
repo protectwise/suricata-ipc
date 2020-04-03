@@ -92,7 +92,7 @@ ENV SURICATA_EXE=/usr/bin/suricata
 
 FROM suricata-setup AS development
 
-ENV RUST_LOG=bellini=debug
+ENV RUST_LOG=suricata_rs=debug
 
 WORKDIR /development
 

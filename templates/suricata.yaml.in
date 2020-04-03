@@ -63,10 +63,10 @@ default-log-dir: /var/log/suricata/
 
 # global stats configuration
 stats:
-  enabled: yes
+  enabled: {{ stats }}
   # The interval field (in seconds) controls at what interval
   # the loggers are invoked.
-  interval: 8
+  interval: 15
   decoder-events-prefix: true
 
 # Configure the type of alert (and other) logging you would like.
@@ -137,11 +137,13 @@ outputs:
               # one taken into consideration.
               header: X-Forwarded-For
         - stats:
-            enabled: false
+            enabled: {{ stats }}
             totals: yes       # stats for all threads merged together
             threads: no       # per thread stats
         # bi-directional flows
-        # - flow
+{% if flows %}
+        - flow
+{% endif %}
         # uni-directional flows
         #- netflow
         # Vars log flowbits and other packet and flow vars
@@ -192,11 +194,11 @@ outputs:
   # a line based log of HTTP requests (no alerts)
   - http-log:
       enabled: no
-      filename: http.log
-      append: yes
+      #filename: http.log
+      #append: yes
       #extended: yes     # enable this for extended logging information
       #custom: yes       # enabled the custom logging format (defined by customformat)
-      #filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
+      filetype: unix_stream # 'regular', 'unix_stream' or 'unix_dgram'
 
   # a line based log of TLS handshake parameters (no alerts)
   - tls-log:
@@ -218,9 +220,9 @@ outputs:
   # a line based log of DNS requests and/or replies (no alerts)
   - dns-log:
       enabled: no
-      filename: dns.log
+      #filename: dns.log
       append: yes
-      #filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
+      filetype: unix_stream
 
   # Packet log... log packets in pcap format. 3 modes of operation: "normal"
   # "multi" and "sguil".
@@ -291,7 +293,7 @@ outputs:
 
   # Stats.log contains data from various counters of the suricata engine.
   - stats:
-      enabled: {{ stats }}
+      enabled: false
       filename: /var/log/protectwise/stats.log
       totals: yes       # stats for all threads merged together
       threads: no       # per thread stats

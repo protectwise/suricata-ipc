@@ -1,4 +1,4 @@
-use bellini::prelude::{CachedRule, IdsKey, IntelCache, Tracer};
+use suricata_rs::prelude::{CachedRule, IdsKey, IntelCache, Tracer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;

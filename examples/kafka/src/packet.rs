@@ -1,4 +1,4 @@
-use bellini::prelude::*;
+use suricata_rs::prelude::*;
 use log::*;
 use std::io::Read;
 

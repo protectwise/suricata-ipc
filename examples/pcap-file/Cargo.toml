@@ -1,11 +1,11 @@
 [package]
-name = "bellini-example-pcap"
+name = "suricata-rs-example-pcap"
 version = "0.1.0"
 authors = ["Danny Browning <bdbrowning2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bellini = { path = "../../" }
-futures-preview = { version = "0.3.0-alpha.19", features = ["async-await"] }
+suricata-rs = { path = "../../" }
+futures = "0.3"
 net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "master" }
-tokio = "0.2.0-alpha.6"
+tokio = { version = "0.2", features = ["macros", "rt-threaded"] }
