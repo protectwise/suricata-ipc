@@ -1,10 +1,10 @@
-use suricata_rs::prelude::*;
 use criterion::{criterion_group, criterion_main, Criterion};
 use futures::TryStreamExt;
 use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use suricata_rs::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";

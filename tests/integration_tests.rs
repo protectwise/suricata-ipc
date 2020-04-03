@@ -1,12 +1,12 @@
 #![deny(unused_must_use, unused_imports, bare_trait_objects)]
 use async_trait::async_trait;
-use suricata_rs::prelude::*;
 use futures::TryStreamExt;
 use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
+use suricata_rs::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
@@ -173,8 +173,10 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
     ids_args.materialize_config_to = suricata_yaml;
     ids_args.alert_path = alert_path;
     ids_args.rule_path = rules;
-    ids_args.exe_path = PathBuf::from(std::env::var("SURICATA_EXE_PATH").unwrap_or("/usr/bin/suricata".to_owned()));
-    ids_args.suriata_config_path = PathBuf::from(std::env::var("SURICATA_CONFIG_PATH").unwrap_or("/etc/suricata".to_owned()));
+    ids_args.exe_path =
+        PathBuf::from(std::env::var("SURICATA_EXE_PATH").unwrap_or("/usr/bin/suricata".to_owned()));
+    ids_args.suriata_config_path =
+        PathBuf::from(std::env::var("SURICATA_CONFIG_PATH").unwrap_or("/etc/suricata".to_owned()));
     let mut ids = Ids::new(ids_args).await?;
 
     let ids_output = ids.take_output().expect("No output");

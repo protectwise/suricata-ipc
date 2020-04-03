@@ -47,7 +47,7 @@ mod intel;
 pub mod prelude {
     pub use super::config::Config;
     pub use super::errors::Error;
-    pub use super::eve::{EveReader, EveAlert, EveEventType, EveMessage, EveStats};
+    pub use super::eve::{EveAlert, EveEventType, EveMessage, EveReader, EveStats};
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
     pub use super::Ids;
     pub use packet_ipc::AsIpcPacket;

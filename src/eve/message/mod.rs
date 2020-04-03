@@ -102,7 +102,10 @@ mod tests {
         let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
 
         if let EventType::Flow(flow) = eve.event {
-            assert_eq!(flow.src_ip, std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 10, 10, 30)));
+            assert_eq!(
+                flow.src_ip,
+                std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 10, 10, 30))
+            );
             assert_eq!(flow.src_port, 57_656);
             assert_eq!(flow.proto.as_str(), "TCP");
             assert!(flow.app_proto.is_none());
@@ -127,7 +130,10 @@ mod tests {
         let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
 
         if let EventType::Flow(flow) = eve.event {
-            assert_eq!(flow.dest_ip, std::net::IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 8, 8)));
+            assert_eq!(
+                flow.dest_ip,
+                std::net::IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 8, 8))
+            );
             assert_eq!(flow.dest_port, 53);
             assert_eq!(flow.proto.as_str(), "UDP");
             assert_eq!(flow.app_proto, Some("dns".to_owned()));

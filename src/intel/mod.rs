@@ -52,7 +52,11 @@ impl<T> CachedRule<T> {
 }
 
 pub enum Observed<T> {
-    Alert { rule: T, ts: DateTime<Utc>, message: EveAlert },
+    Alert {
+        rule: T,
+        ts: DateTime<Utc>,
+        message: EveAlert,
+    },
     Tracer(DateTime<Utc>),
 }
 

@@ -90,11 +90,7 @@ impl Config {
         let alerts = self.alert_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
-        let stats = if self.enable_stats {
-            "yes"
-        } else {
-            "no"
-        };
+        let stats = if self.enable_stats { "yes" } else { "no" };
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
