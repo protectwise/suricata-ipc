@@ -40,7 +40,7 @@ jobs:
     - name: Install rust and tools
       run: |
         curl https://sh.rustup.rs -sSf | sh -s -- -y
-        echo "::add-path::$HOME/.cargo/bin"
+        source $HOME/.cargo/env
         rustup component add rustfmt
         cargo install --force cbindgen
     - name: Build Suricata
