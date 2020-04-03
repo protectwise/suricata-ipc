@@ -48,15 +48,22 @@ jobs:
           libjansson-dev \
           zlib1g \
           zlib1g-dev
-    - name: Install rust and tools
+    - name: Install rust
       run: |
         curl https://sh.rustup.rs -sSf | sh -s -- -y
-        . $HOME/.cargo/env
+    - name: Add Rust to Path
+      run: echo "::add-path::$HOME/.cargo/bin"
+    - name: Add Rust Tools
+      run: |
         rustup component add rustfmt
         cargo install --force cbindgen
     - name: Build Suricata
       working-directory: suricata
-      run: autoreconf -i && ./configure --with-unix-socket && make install && make install-conf
+      run: |
+        autoreconf -i
+        ./configure --with-unix-socket
+        make install
+        make install-conf
     - name: Format
       run: cargo fmt --all -- --check
     - name: Build
