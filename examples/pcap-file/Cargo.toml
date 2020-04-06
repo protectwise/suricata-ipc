@@ -1,11 +1,11 @@
 [package]
-name = "suricata-rs-example-pcap"
+name = "suricata-ipc-example-pcap"
 version = "0.1.0"
 authors = ["Danny Browning <bdbrowning2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-suricata-rs = { path = "../../" }
 futures = "0.3"
-net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "master" }
+net-parser-rs = "0.2"
+suricata-ipc = "0.1"
 tokio = { version = "0.2", features = ["macros", "rt-threaded"] }

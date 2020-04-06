@@ -5,12 +5,12 @@ authors = ["dbcfd <bdbrowning2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-suricata-rs = { git = "https://dbcfd:0aec2c8ecb94e901d09fa5218fd0dbc6a1ec5827@github.com/dbcfd/suricata-rs.git" }
 env_logger = "0.7"
 futures = "0.3"
 log = "0.4"
-net-parser-rs = { git = "https://github.com/protectwise/net-parser-rs.git", branch = "master" }
+net-parser-rs = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+suricata-ipc = "0.1"
 tokio = { version = "0.2", features = ["macros", "rt-threaded"] }
 url = { version = "2.1", features = ["serde"] }
