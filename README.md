@@ -1,10 +1,12 @@
-# suricata-rs
+# suricata-ipc
 
 Library to enable packet sharing with suricata, and reading alerts from an eve
 socket. Alerts read can then use an intel cache to determine additional metadata
 about them.
 
 ```rust
+use suricata_ipc::prelude::*;
+
 #[tokio::main]
 async fn main() {
     let rules = Rules::from_path("my.rules").expect("Failed to parse rules");
