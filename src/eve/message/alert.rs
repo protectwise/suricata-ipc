@@ -23,6 +23,7 @@ pub struct Alert {
     pub dest_ip: std::net::IpAddr,
     pub dest_port: u32,
     pub proto: String,
+    pub community_id: Option<String>,
     pub alert: AlertInfo,
     pub flow: AlertFlowInfo,
 }

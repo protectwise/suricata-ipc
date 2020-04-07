@@ -216,10 +216,11 @@ async fn ids_process_testmyids() {
 
     let result = run_ids(runner).await.expect("Failed to run");
 
-    let alerts_len = result.messages.len();
+    let mut alerts = 0;
 
     for eve in result.messages {
         if let EveEventType::Alert(ref alert) = eve.event {
+            alerts += 1;
             assert_eq!(
                 alert.src_ip,
                 "82.165.177.154"
@@ -238,7 +239,7 @@ async fn ids_process_testmyids() {
     }
 
     assert_eq!(result.packets_sent, 10);
-    assert_eq!(alerts_len, 1);
+    assert_eq!(alerts, 1);
 }
 
 #[tokio::test]
@@ -249,10 +250,11 @@ async fn ids_process_tracer() {
 
     let result = run_ids(runner).await.expect("Failed to run");
 
-    let alerts_len = result.messages.len();
+    let mut alerts = 0;
 
     for eve in result.messages {
         if let EveEventType::Alert(ref alert) = eve.event {
+            alerts += 1;
             assert_eq!(
                 alert.src_ip,
                 "10.1.10.39"
@@ -276,7 +278,7 @@ async fn ids_process_tracer() {
     }
 
     assert_eq!(result.packets_sent, 1);
-    assert_eq!(alerts_len, 1);
+    assert_eq!(alerts, 1);
 }
 
 #[tokio::test]
@@ -287,10 +289,11 @@ async fn ids_process_tracer_multiple() {
 
     let result = run_ids(runner).await.expect("Failed to run");
 
-    let alerts_len = result.messages.len();
+    let mut alerts = 0;
 
     for eve in result.messages {
         if let EveEventType::Alert(ref alert) = eve.event {
+            alerts += 1;
             assert_eq!(
                 alert.src_ip,
                 "10.1.10.39"
@@ -308,13 +311,13 @@ async fn ids_process_tracer_multiple() {
             if let Observed::Tracer(_) = observed {
                 //ok
             } else {
-                panic!("Alert was not determed to be a tracer");
+                panic!("Alert was not determined to be a tracer");
             }
         }
     }
 
     assert_eq!(result.packets_sent, 3);
-    assert_eq!(alerts_len, 3);
+    assert_eq!(alerts, 3);
 }
 
 #[tokio::test]
@@ -325,10 +328,11 @@ async fn ids_process_tracer_multiple_reload() {
 
     let result = run_ids(runner).await.expect("Failed to run");
 
-    let alerts_len = result.messages.len();
+    let mut alerts = 0;
 
     for eve in result.messages {
         if let EveEventType::Alert(ref alert) = eve.event {
+            alerts += 1;
             assert_eq!(
                 alert.src_ip,
                 "10.1.10.39"
@@ -352,7 +356,7 @@ async fn ids_process_tracer_multiple_reload() {
     }
 
     assert_eq!(result.packets_sent, 3);
-    assert_eq!(alerts_len, 3);
+    assert_eq!(alerts, 3);
 }
 
 #[tokio::test]
@@ -377,21 +381,23 @@ async fn ids_process_4sics() {
 
     for msg in result.messages {
         match msg.event {
-            EveEventType::Alert(_) => {
+            EveEventType::Alert(a) => {
+                assert!(a.community_id.is_some());
                 alerts += 1;
             }
             EveEventType::Stats { stats } => {
                 packets = stats.decoder.pkts;
                 stats_messages += 1;
             }
-            EveEventType::Flow(_) => {
+            EveEventType::Flow(f) => {
+                assert!(f.community_id.is_some());
                 flows += 1;
             }
         }
     }
 
     assert_eq!(alerts, 0);
-    assert_eq!(flows, 9_817);
-    assert_eq!(stats_messages, 3);
+    assert!(flows > 10_000);
+    assert!(stats_messages > 1);
     assert_eq!(packets, 246_137);
 }

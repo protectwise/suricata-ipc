@@ -26,6 +26,7 @@ impl std::fmt::Display for InternalIps {
 struct ConfigTemplate<'a> {
     rules: &'a str,
     alerts: &'a str,
+    community_id: &'a str,
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
     stats: &'a str,
@@ -39,6 +40,8 @@ pub struct Config {
     pub enable_stats: bool,
     /// Whether flows should be enabled (output) for suricata
     pub enable_flows: bool,
+    /// Whether community id should be enabled
+    pub enable_community_id: bool,
     /// Path where config will be materialized to
     pub materialize_config_to: PathBuf,
     /// Path where the suricata executable lives
@@ -60,6 +63,7 @@ impl Default for Config {
         Config {
             enable_stats: true,
             enable_flows: true,
+            enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {
                 if let Some(e) = std::env::var_os("SURICATA_EXE").map(|s| PathBuf::from(s)) {
@@ -91,10 +95,12 @@ impl Config {
         let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
         let stats = if self.enable_stats { "yes" } else { "no" };
+        let community_id = if self.enable_community_id { "yes" } else { "no" };
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
             alerts: &alerts,
+            community_id: &community_id,
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
             stats: &stats,

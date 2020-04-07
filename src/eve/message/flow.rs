@@ -43,6 +43,7 @@ pub struct Flow {
     pub dest_port: u16,
     pub proto: String,
     pub app_proto: Option<String>,
+    pub community_id: Option<String>,
     #[serde(rename = "flow")]
     pub state: FlowState,
 }
