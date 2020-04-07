@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
-use suricata_rs::prelude::*;
+use suricata_ipc::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";

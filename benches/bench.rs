@@ -4,7 +4,7 @@ use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use suricata_rs::prelude::*;
+use suricata_ipc::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
