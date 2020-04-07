@@ -96,7 +96,10 @@ mod tests {
 
             assert_eq!(eve.src_ip, expected_src_ip);
             assert_eq!(eve.alert.signature_id, 600074);
-            assert_eq!(eve.community_id, Some("1:3ZcLCpqiJpUyBlL6cvSAzm4Cn94=".to_owned()));
+            assert_eq!(
+                eve.community_id,
+                Some("1:3ZcLCpqiJpUyBlL6cvSAzm4Cn94=".to_owned())
+            );
         } else {
             panic!("Not an alert");
         }
@@ -174,7 +177,10 @@ mod tests {
             assert_eq!(flow.state.start, expected_timestamp);
 
             assert_eq!(flow.state.pkts_toserver, 3);
-            assert_eq!(flow.community_id, Some("1:3ZcLCpqiJpUyBlL6cvSAzm4Cn94=".to_owned()));
+            assert_eq!(
+                flow.community_id,
+                Some("1:3ZcLCpqiJpUyBlL6cvSAzm4Cn94=".to_owned())
+            );
         } else {
             panic!("Not stats");
         }
