@@ -33,7 +33,7 @@ pub struct Message {
 impl std::convert::TryFrom<&[u8]> for Message {
     type Error = Error;
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
-        log::debug!("Deserializing {}", String::from_utf8_lossy(v));
+        log::trace!("Deserializing {}", String::from_utf8_lossy(v));
         serde_json::from_slice(v).map_err(|e| {
             let s = String::from_utf8_lossy(v);
             log::debug!("Failed to deserialize: {}", s);

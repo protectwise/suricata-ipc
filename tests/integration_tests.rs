@@ -187,10 +187,12 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
 
     let packets_sent = runner.run(&mut ids).await;
 
+    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+
     info!("Packets sent, closing connection");
     ids.close()?;
 
-    tokio::time::delay_for(std::time::Duration::from_secs(5)).await;
+    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
 
     let messages: Result<Vec<_>, Error> = ids_messages.try_collect().await;
     let messages: Result<Vec<_>, Error> = messages?.into_iter().flat_map(|v| v).collect();
@@ -292,6 +294,7 @@ async fn ids_process_tracer_multiple() {
     let mut alerts = 0;
 
     for eve in result.messages {
+        debug!("Received {:?}", eve);
         if let EveEventType::Alert(ref alert) = eve.event {
             alerts += 1;
             assert_eq!(
