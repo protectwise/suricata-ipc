@@ -1,6 +1,6 @@
 [package]
 name = "suricata-ipc"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["dbcfd <bdbrowning2@gmail.com>"]
 edition = "2018"
 description = "Library for sending packets to suricata and receiving output."
@@ -9,7 +9,7 @@ repository = "https://github.com/protectwise/suricata-ipc/"
 readme = "README.md"
 keywords=["pcap","packet","network"]
 categories=["encoding","network-programming","parsing"]
-exclude = ["resources/4SICS-GeekLounge-151020.pcap"]
+exclude = ["resources/pcaps"]
 
 [dependencies]
 askama = "0.8"
