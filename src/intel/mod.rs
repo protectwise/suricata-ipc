@@ -88,11 +88,11 @@ impl<T> IntelCache<T> {
         T: AsRef<[u8]>,
     {
         let p: &Path = path.as_ref();
-        let mut f = std::fs::File::create(p).map_err(Error::Io)?;
+        let mut f = std::fs::File::create(p).map_err(Error::from)?;
         for kv in self.inner.iter() {
             let (_, rule) = kv;
-            f.write(rule.rule_bytes()).map_err(Error::Io)?;
-            f.write(LINE_SEPARATOR).map_err(Error::Io)?;
+            f.write(rule.rule_bytes()).map_err(Error::from)?;
+            f.write(LINE_SEPARATOR).map_err(Error::from)?;
         }
         f.flush().map_err(Error::Io)?;
         info!("Materialized rules to {:?}", p);

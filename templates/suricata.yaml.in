@@ -75,8 +75,17 @@ outputs:
   # Extensible Event Format (nicknamed EVE) event log in JSON format
   - eve-log:
       enabled: yes
-      filetype: unix_stream #regular|syslog|unix_dgram|unix_stream|redis
-      filename: {{ alerts }}
+{% match alert %}
+    {% when AlertConfiguration::Uds with (val) %}
+      filetype: unix_stream
+      filename: {{ val.path.to_string_lossy() }}
+    {% when AlertConfiguration::Redis with (val) %}
+      filetype: redis
+      redis:
+        server: {{ val.server }}
+        port: {{ val.port }}
+        mode: publish
+{% endmatch %}
       #prefix: "@cee: " # prefix to prepend to each log entry
       # the following are valid when type: syslog above
       #identity: "suricata"

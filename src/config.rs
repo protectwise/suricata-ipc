@@ -25,13 +25,64 @@ impl std::fmt::Display for InternalIps {
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
     rules: &'a str,
-    alerts: &'a str,
+    alert: &'a AlertConfiguration,
     community_id: &'a str,
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
     stats: &'a str,
     flows: bool,
     max_pending_packets: &'a str,
+}
+
+/// Configuration options for redis output
+pub struct Redis {
+    pub server: String,
+    pub port: u16,
+}
+
+impl Default for Redis {
+    fn default() -> Self {
+        Self {
+            server: "redis".into(),
+            port: 6379,
+        }
+    }
+}
+
+/// Configuration options for Alert socket
+pub struct Uds {
+    pub path: PathBuf,
+    pub external_listener: bool,
+}
+
+impl Default for Uds {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::from("/tmp/suricata.alerts"),
+            external_listener: false,
+        }
+    }
+}
+
+/// Alert configuration
+pub enum AlertConfiguration {
+    Redis(Redis),
+    Uds(Uds),
+}
+
+impl AlertConfiguration {
+    pub fn uds(path: PathBuf) -> Self {
+        Self::Uds(Uds {
+            path: path,
+            external_listener: false,
+        })
+    }
+}
+
+impl Default for AlertConfiguration {
+    fn default() -> Self {
+        Self::Uds(Uds::default())
+    }
 }
 
 /// Configuration options for suricata
@@ -46,8 +97,8 @@ pub struct Config {
     pub materialize_config_to: PathBuf,
     /// Path where the suricata executable lives
     pub exe_path: PathBuf,
-    /// Path where the alert socket should reside at
-    pub alert_path: PathBuf,
+    /// Configuration for alerts
+    pub alerts: AlertConfiguration,
     /// Path where the rules reside at
     pub rule_path: PathBuf,
     /// Path where suricata config resides at (e.g. threshold config)
@@ -72,7 +123,7 @@ impl Default for Config {
                     PathBuf::from("/usr/local/bin/suricata")
                 }
             },
-            alert_path: PathBuf::from("/tmp/suricata.alerts"),
+            alerts: AlertConfiguration::default(),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
             suriata_config_path: PathBuf::from("/etc/suricata"),
             internal_ips: InternalIps(vec![
@@ -91,7 +142,6 @@ impl Default for Config {
 impl Config {
     pub fn materialize(&self) -> Result<(), Error> {
         let rules = self.rule_path.to_string_lossy().to_owned();
-        let alerts = self.alert_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
         let stats = if self.enable_stats { "yes" } else { "no" };
@@ -103,7 +153,7 @@ impl Config {
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
-            alerts: &alerts,
+            alert: &self.alerts,
             community_id: &community_id,
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
@@ -112,10 +162,10 @@ impl Config {
             max_pending_packets: &max_pending_packets,
         };
         debug!("Attempting to render");
-        let rendered = template.render().map_err(Error::Askama)?;
+        let rendered = template.render().map_err(Error::from)?;
         debug!("Writing output.yaml to {:?}", self.materialize_config_to);
         let mut f = std::fs::File::create(&self.materialize_config_to).map_err(Error::Io)?;
-        f.write(rendered.as_bytes()).map_err(Error::Io)?;
+        f.write(rendered.as_bytes()).map_err(Error::from)?;
         debug!("Output file written");
         Ok(())
     }

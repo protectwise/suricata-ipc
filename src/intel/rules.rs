@@ -36,7 +36,7 @@ fn parse_rule(line: &str) -> Result<Rule, Error> {
     let sid = &caps[1];
     let sid = u64::from_str(sid).map_err(Error::ParseInt)?;
     let gid = if let Some(gid) = GID_REGEX.captures(line) {
-        u64::from_str(&gid[1]).map_err(Error::ParseInt)?
+        u64::from_str(&gid[1]).map_err(Error::from)?
     } else {
         1
     };
@@ -52,10 +52,10 @@ pub struct Rules {
 
 impl Rules {
     pub fn from_path<T: AsRef<Path>>(path: T) -> Result<Self, Error> {
-        let f = File::open(path.as_ref()).map_err(Error::Io)?;
+        let f = File::open(path.as_ref()).map_err(Error::from)?;
         let lines: Result<Vec<_>, Error> = BufReader::new(f)
             .lines()
-            .map(|r| r.map_err(Error::Io))
+            .map(|r| r.map_err(Error::from))
             .collect();
         let lines = lines?;
         let rules: Vec<_> = lines
