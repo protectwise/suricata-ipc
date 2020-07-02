@@ -29,7 +29,7 @@ impl JsonParser {
                     } else {
                         let s = String::from_utf8_lossy(&buffer[last_good_offset..buffer.len()]);
                         log::debug!("Failed to deserialize: {}", s);
-                        return Err(Error::SerdeJson(e));
+                        return Err(Error::from(e));
                     }
                 }
                 None => {

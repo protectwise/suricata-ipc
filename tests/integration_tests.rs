@@ -63,9 +63,9 @@ impl TestRunner for MultiTracerTestRunner {
 async fn send_tracers<'a>(ids: &'a Ids<'a>) -> usize {
     let now = SystemTime::now();
     send_tracer(ids, now - Duration::from_secs(600)).await;
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    smol::Timer::after(Duration::from_secs(1)).await;
     send_tracer(ids, now - Duration::from_secs(300)).await;
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    smol::Timer::after(Duration::from_secs(1)).await;
     send_tracer(ids, now).await;
     3
 }
@@ -82,10 +82,10 @@ impl TestRunner for MultiTracerReloadTestRunner {
 async fn send_tracers_with_reload<'a>(ids: &'a Ids<'a>) -> usize {
     let now = SystemTime::now();
     send_tracer(ids, now - Duration::from_secs(600)).await;
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    smol::Timer::after(Duration::from_secs(1)).await;
     assert!(ids.reload_rules());
     send_tracer(ids, now - Duration::from_secs(300)).await;
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    smol::Timer::after(Duration::from_secs(1)).await;
     send_tracer(ids, now).await;
     3
 }
@@ -144,7 +144,7 @@ async fn send_packets_from_file<'a>(
         packets_sent += ids
             .send(packets.as_slice())
             .expect("Failed to send packets");
-        tokio::time::delay_for(Duration::from_millis(10)).await;
+        smol::Timer::after(Duration::from_millis(10)).await;
         trace!("Sent {} packets", packets_sent);
     }
 
@@ -171,7 +171,7 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
 
     let mut ids_args = Config::default();
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.alert_path = alert_path;
+    ids_args.alerts = AlertConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
     ids_args.exe_path =
         PathBuf::from(std::env::var("SURICATA_EXE_PATH").unwrap_or("/usr/bin/suricata".to_owned()));
@@ -181,18 +181,18 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
 
     let ids_output = ids.take_output().expect("No output");
 
-    tokio::spawn(ids_output);
+    smol::Task::spawn(ids_output).detach();
 
     let ids_messages = ids.take_messages().expect("No alerts");
 
     let packets_sent = runner.run(&mut ids).await;
 
-    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+    smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
     info!("Packets sent, closing connection");
     ids.close()?;
 
-    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+    smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
     let messages: Result<Vec<_>, Error> = ids_messages.try_collect().await;
     let messages: Result<Vec<_>, Error> = messages?.into_iter().flat_map(|v| v).collect();
@@ -207,8 +207,8 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
     })
 }
 
-#[tokio::test]
-async fn ids_process_testmyids() {
+#[test]
+fn ids_process_testmyids() {
     let _ = env_logger::try_init();
 
     let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -216,7 +216,7 @@ async fn ids_process_testmyids() {
 
     let runner = PcapPathTestRunner::new(pcap_path);
 
-    let result = run_ids(runner).await.expect("Failed to run");
+    let result = smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -244,13 +244,13 @@ async fn ids_process_testmyids() {
     assert_eq!(alerts, 1);
 }
 
-#[tokio::test]
-async fn ids_process_tracer() {
+#[test]
+fn ids_process_tracer() {
     let _ = env_logger::try_init();
 
     let runner = TracerTestRunner;
 
-    let result = run_ids(runner).await.expect("Failed to run");
+    let result = smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -283,13 +283,13 @@ async fn ids_process_tracer() {
     assert_eq!(alerts, 1);
 }
 
-#[tokio::test]
-async fn ids_process_tracer_multiple() {
+#[test]
+fn ids_process_tracer_multiple() {
     let _ = env_logger::try_init();
 
     let runner = MultiTracerTestRunner;
 
-    let result = run_ids(runner).await.expect("Failed to run");
+    let result = smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -323,13 +323,13 @@ async fn ids_process_tracer_multiple() {
     assert_eq!(alerts, 3);
 }
 
-#[tokio::test]
-async fn ids_process_tracer_multiple_reload() {
+#[test]
+fn ids_process_tracer_multiple_reload() {
     let _ = env_logger::try_init();
 
     let runner = MultiTracerReloadTestRunner;
 
-    let result = run_ids(runner).await.expect("Failed to run");
+    let result = smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -362,8 +362,8 @@ async fn ids_process_tracer_multiple_reload() {
     assert_eq!(alerts, 3);
 }
 
-#[tokio::test]
-async fn ids_process_4sics() {
+#[test]
+fn ids_process_4sics() {
     let _ = env_logger::try_init();
 
     let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -373,7 +373,7 @@ async fn ids_process_4sics() {
 
     let runner = PcapPathTestRunner::new(pcap_path);
 
-    let result = run_ids(runner).await.expect("Failed to run");
+    let result = smol::run(run_ids(runner)).expect("Failed to run");
 
     assert_eq!(result.packets_sent, 246_137);
 

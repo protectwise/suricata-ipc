@@ -37,7 +37,7 @@ impl std::convert::TryFrom<&[u8]> for Message {
         serde_json::from_slice(v).map_err(|e| {
             let s = String::from_utf8_lossy(v);
             log::debug!("Failed to deserialize: {}", s);
-            Error::SerdeJson(e)
+            Error::from(e)
         })
     }
 }
@@ -215,9 +215,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[ignore]
-    async fn should_decode_eve_dns() {
+    fn should_decode_eve_dns() {
         let _msg = r#"{"timestamp":"2015-10-20T16:07:21.584630-0600","flow_id":482657058359332,"event_type":"dns","src_ip":"192.168.88.61","src_port":949,"dest_ip":"192.168.88.1","dest_port":53,"proto":"UDP","community_id":"1:P7jixReUPBkrfEsrEJysVvyhqKc=","dns":{"version":2,"type":"answer","id":56281,"flags":"8185","qr":true,"rd":true,"ra":true,"rrname":"time.nist.gov","rrtype":"A","rcode":"REFUSED"}}"#;
     }
 }

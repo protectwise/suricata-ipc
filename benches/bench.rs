@@ -52,13 +52,13 @@ async fn run_ids<T: AsRef<Path>>(
 
     let mut ids_args = Config::default();
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.alert_path = alert_path;
+    ids_args.alerts = AlertConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
     let mut ids = Ids::new(ids_args).await.expect("failed to create ids");
 
     let ids_output = ids.take_output().expect("No output");
 
-    tokio::spawn(ids_output);
+    smol::Task::spawn(ids_output).detach();
 
     let ids_messages = ids.take_messages().expect("No alerts");
 
@@ -106,8 +106,6 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
     let benchmark = criterion::Benchmark::new("ids", |b| {
         let _ = env_logger::try_init();
 
-        let mut rt = tokio::runtime::Runtime::new().expect("Could not create runtime");
-
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let pcap_path = cargo_dir
             .join("resources")
@@ -116,7 +114,7 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
         b.iter(|| {
             let f = run_ids(pcap_path.clone(), 50000);
 
-            let (packets_sent, messages) = rt.block_on(f).expect("Failed to run");
+            let (packets_sent, messages) = smol::run(f).expect("Failed to run");
 
             assert!(packets_sent >= 50000);
             assert_eq!(messages.len(), 0);

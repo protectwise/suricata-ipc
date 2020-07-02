@@ -3,12 +3,12 @@
 //! Provide access to suricata via a library-like interface. Allows packets to be sent to suricata
 //! and alerts received.
 //!
-//! ```rust
-//! # use suricata_rs::prelude::*;
+//! ```rust,norun
+//! # use suricata_ipc::prelude::*;
 //! # use futures::TryStreamExt;
 //! # use std::path::PathBuf;
-//! #[tokio::main]
-//! async fn main() {
+//!
+//! fn main() {
 //!     let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 //!         .parent().expect("Invalid path")
 //!         .parent().expect("Invalid path")
@@ -18,24 +18,27 @@
 //!     let cache: IntelCache<Rule> = rules.into();
 //!     cache.materialize_rules(config.rule_path.clone()).expect("Failed to materialize rules");
 //!
-//!     let mut ids = Ids::new(config).await.expect("Failed to create ids");
-//!     let ids_alerts = ids.take_alerts().expect("No alerts");
+//!     smol::run(async move {
+//!         let mut ids = Ids::new(config).await.expect("Failed to create ids");
+//!         let ids_alerts = ids.take_messages().expect("No alerts");
 //!
-//!     send_packets(&mut ids).await.expect("Failed to send packets");
+//!         let packets = vec![];
+//!         ids.send(packets.as_slice()).expect("Failed to send packets");
 //!
-//!     let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
-//!     let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to receive alerts")
-//!         .into_iter().flat_map(|v| v).collect();
-//!     let alerts = alerts.expect("Failed to parse alerts");
+//!         let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
+//!         let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to receive alerts")
+//!             .into_iter().flat_map(|v| v).collect();
+//!         let alerts = alerts.expect("Failed to parse alerts");
 //!
-//!     for eve in alerts {
-//!         println!("Eve={:?}", eve);
-//!         if let Some(intel) = cache.observed(eve) {
-//!             if let Observed::Alert { rule, message: _ } = intel {
-//!                 println!("Rule={:?}", rule);
+//!         for eve in alerts {
+//!             println!("Eve={:?}", eve);
+//!             if let Some(intel) = cache.observed(eve) {
+//!                 if let Observed::Alert { rule, message: _, ts: _} = intel {
+//!                     println!("Rule={:?}", rule);
+//!                 }
 //!             }
 //!         }
-//!     }
+//!     })
 //! }
 //! ```
 #![deny(unused_must_use, unused_imports, bare_trait_objects)]
@@ -45,7 +48,7 @@ mod eve;
 mod intel;
 
 pub mod prelude {
-    pub use super::config::Config;
+    pub use super::config::{AlertConfiguration, Config, Redis, Uds};
     pub use super::errors::Error;
     pub use super::eve::{EveAlert, EveEventType, EveMessage, EveReader, EveStats};
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
@@ -55,13 +58,11 @@ pub mod prelude {
     pub use chrono;
 }
 
-use futures::{self, FutureExt, StreamExt};
+use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
 use std::future::Future;
 use std::{path::PathBuf, pin::Pin};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::net::UnixListener;
 
 pub struct Ids<'a> {
     reader: Option<EveReader>,
@@ -74,8 +75,8 @@ unsafe impl<'a> Send for Ids<'a> {}
 unsafe impl<'a> Sync for Ids<'a> {}
 
 pub struct IdsProcess {
-    pub inner: tokio::process::Child,
-    alert_path: PathBuf,
+    pub inner: std::process::Child,
+    alert_path: Option<PathBuf>,
 }
 
 impl Drop for IdsProcess {
@@ -83,9 +84,11 @@ impl Drop for IdsProcess {
         if let Err(e) = self.inner.kill() {
             error!("Failed to stop suricata process: {:?}", e);
         }
-        if self.alert_path.exists() {
-            if let Err(e) = std::fs::remove_file(&self.alert_path) {
-                error!("Failed to remove alert socket: {:?}", e);
+        if let Some(path) = self.alert_path.take() {
+            if path.exists() {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    error!("Failed to remove alert socket: {:?}", e);
+                }
             }
         }
     }
@@ -119,21 +122,29 @@ impl<'a> Ids<'a> {
     }
 
     pub async fn new(args: Config) -> Result<Ids<'a>, Error> {
-        if args.alert_path.exists() {
-            std::fs::remove_file(&args.alert_path).map_err(Error::Io)?;
-        }
-
         //need a one shot server name to give to suricata
-        let server = packet_ipc::Server::new().map_err(Error::PacketIpc)?;
+        let server = packet_ipc::Server::new().map_err(Error::from)?;
         let server_name = server.name().clone();
 
-        //need an alert socket that suricata can connect to
-        let mut uds_listener = UnixListener::bind(args.alert_path.clone()).map_err(Error::Io)?;
+        let listener_and_path = if let AlertConfiguration::Uds(uds) = &args.alerts {
+            if uds.external_listener {
+                None
+            } else {
+                if uds.path.exists() {
+                    std::fs::remove_file(&uds.path).map_err(Error::from)?;
+                }
+                let listener = std::os::unix::net::UnixListener::bind(uds.path.clone())
+                    .map_err(Error::from)?;
+                Some((listener, uds.path.clone()))
+            }
+        } else {
+            None
+        };
 
         args.materialize()?;
 
         let ipc = format!("--ipc={}", server_name);
-        let mut command = tokio::process::Command::new(args.exe_path.to_str().unwrap());
+        let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         command
             .args(&["-c", args.materialize_config_to.to_str().unwrap(), &ipc])
             .stdin(std::process::Stdio::null())
@@ -144,8 +155,8 @@ impl<'a> Ids<'a> {
 
         let mut stdout_complete = {
             let o = process.stdout.take().unwrap();
-            let reader = BufReader::new(o);
             let pid = process.id();
+            let reader = futures::io::BufReader::new(smol::Async::new(o).map_err(Error::from)?);
             reader
                 .lines()
                 .for_each(move |t| {
@@ -158,8 +169,8 @@ impl<'a> Ids<'a> {
         };
         let mut stderr_complete = {
             let o = process.stderr.take().unwrap();
-            let reader = BufReader::new(o);
             let pid = process.id();
+            let reader = futures::io::BufReader::new(smol::Async::new(o).map_err(Error::from)?);
             reader
                 .lines()
                 .for_each(move |t| {
@@ -182,21 +193,31 @@ impl<'a> Ids<'a> {
         .fuse()
         .boxed();
 
-        let connected_ipc = server.accept().map_err(Error::PacketIpc)?;
+        let connected_ipc = server.accept().map_err(Error::from)?;
 
         debug!("IPC Connection formed");
 
-        debug!("Waiting on uds connection from suricata");
+        let (reader, path) = if let Some((uds_listener, path)) = listener_and_path {
+            debug!("Waiting on uds connection from suricata");
 
-        let (uds_connection, uds_addr) = uds_listener.accept().await.map_err(Error::Io)?;
+            let (uds_connection, uds_addr) = smol::Async::new(uds_listener)
+                .map_err(Error::from)?
+                .accept()
+                .await
+                .map_err(Error::from)?;
 
-        debug!("UDS connection formed from {:?}", uds_addr);
+            debug!("UDS connection formed from {:?}", uds_addr);
+
+            (Some(uds_connection.into()), Some(path))
+        } else {
+            (None, None)
+        };
 
         Ok(Ids {
-            reader: Some(uds_connection.into()),
+            reader: reader,
             process: Some(IdsProcess {
                 inner: process,
-                alert_path: args.alert_path,
+                alert_path: path,
             }),
             ipc_server: connected_ipc,
             output: Some(lines),

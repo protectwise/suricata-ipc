@@ -1,21 +1,22 @@
 use crate::errors::Error;
 use crate::eve::{json, EveMessage};
 
-use futures::Stream;
+use futures::io::BufReader;
+use futures::{AsyncBufRead, Stream};
 use log::*;
 use pin_project::pin_project;
 use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncBufRead, BufReader};
-use tokio::net::UnixStream;
 
 const BUFFER_SIZE: usize = 1_000_000;
+
+type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
 
 #[pin_project]
 pub struct EveReader {
     #[pin]
-    inner: tokio::io::BufReader<UnixStream>,
+    inner: BufReader<AsyncStream>,
     buf: Vec<u8>,
 }
 
@@ -25,7 +26,7 @@ impl Stream for EveReader {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
         match futures::ready!(this.inner.as_mut().poll_fill_buf(cx)) {
-            Err(e) => Poll::Ready(Some(Err(Error::Io(e)))),
+            Err(e) => Poll::Ready(Some(Err(Error::from(e)))),
             Ok(available) => {
                 let bytes_read = available.len();
 
@@ -62,8 +63,18 @@ impl Stream for EveReader {
     }
 }
 
-impl From<UnixStream> for EveReader {
-    fn from(v: UnixStream) -> Self {
+impl std::convert::TryFrom<std::os::unix::net::UnixStream> for EveReader {
+    type Error = Error;
+    fn try_from(v: std::os::unix::net::UnixStream) -> Result<Self, Error> {
+        Ok(Self {
+            inner: BufReader::new(smol::Async::new(v).map_err(Error::from)?),
+            buf: Vec::with_capacity(BUFFER_SIZE),
+        })
+    }
+}
+
+impl From<smol::Async<std::os::unix::net::UnixStream>> for EveReader {
+    fn from(v: smol::Async<std::os::unix::net::UnixStream>) -> Self {
         Self {
             inner: BufReader::new(v),
             buf: Vec::with_capacity(BUFFER_SIZE),
@@ -74,14 +85,15 @@ impl From<UnixStream> for EveReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::TryStreamExt;
-    use tokio::io::AsyncWriteExt as _;
+    use futures::{AsyncWriteExt, TryStreamExt};
 
-    #[tokio::test]
-    async fn reads_eve() {
+    #[test]
+    fn reads_eve() {
         let _ = env_logger::try_init();
 
-        let (mut server, client) = tokio::net::UnixStream::pair().expect("Could not build pair");
+        let (server, client) =
+            std::os::unix::net::UnixStream::pair().expect("Could not build pair");
+        let mut server = smol::Async::new(server).unwrap();
 
         let send_complete = async move {
             let bytes = r#"{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}}{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}}"#.as_bytes();
@@ -92,9 +104,10 @@ mod tests {
             info!("Send complete");
         };
 
-        tokio::spawn(send_complete);
+        smol::Task::spawn(send_complete).detach();
 
-        let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
+        let alerts: Result<Vec<_>, Error> =
+            smol::run(EveReader::try_from(client).unwrap().try_collect());
         let alerts: Result<Vec<_>, Error> = alerts
             .expect("Failed to get alerts")
             .into_iter()
@@ -105,11 +118,13 @@ mod tests {
         assert_eq!(alerts.len(), 2);
     }
 
-    #[tokio::test]
-    async fn reads_partial_eve() {
+    #[test]
+    fn reads_partial_eve() {
         let _ = env_logger::try_init();
 
-        let (mut server, client) = tokio::net::UnixStream::pair().expect("Could not build pair");
+        let (server, client) =
+            std::os::unix::net::UnixStream::pair().expect("Could not build pair");
+        let mut server = smol::Async::new(server).unwrap();
 
         let send_complete = async move {
             let bytes = vec![
@@ -126,11 +141,12 @@ mod tests {
             info!("Send complete");
         };
 
-        tokio::spawn(send_complete);
+        smol::Task::spawn(send_complete).detach();
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
+        let alerts: Result<Vec<_>, Error> =
+            smol::run(EveReader::try_from(client).unwrap().try_collect());
         let alerts: Result<Vec<_>, Error> = alerts
             .expect("Failed to get alerts")
             .into_iter()
@@ -141,11 +157,13 @@ mod tests {
         assert_eq!(alerts.len(), 2);
     }
 
-    #[tokio::test]
-    async fn reads_single_eve_event() {
+    #[test]
+    fn reads_single_eve_event() {
         let _ = env_logger::try_init();
 
-        let (mut server, client) = tokio::net::UnixStream::pair().expect("Could not build pair");
+        let (server, client) =
+            std::os::unix::net::UnixStream::pair().expect("Could not build pair");
+        let mut server = smol::Async::new(server).unwrap();
 
         let send_complete = async move {
             let bytes = r#"{"timestamp":"2017-12-18T10:48:14.627130-0700","flow_id":2061665895874790,"pcap_cnt":7,"event_type":"alert","src_ip":"10.151.223.136","src_port":26475,"dest_ip":"203.0.113.99","dest_port":80,"proto":"TCP","tx_id":0,"alert":{"action":"allowed","gid":4113433437,"signature_id":600074,"rev":1,"signature":"ProtectWise Canary Test 1.3 - Not Malicious","category":"","severity":3},"app_proto":"http","flow":{"pkts_toserver":4,"pkts_toclient":3,"bytes_toserver":582,"bytes_toclient":302,"start":"2017-12-18T10:48:14.622822-0700"}}"#.as_bytes();
@@ -156,11 +174,12 @@ mod tests {
             info!("Send complete");
         };
 
-        tokio::spawn(send_complete);
+        smol::Task::spawn(send_complete).detach();
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<_>, Error> = EveReader::from(client).try_collect().await;
+        let alerts: Result<Vec<_>, Error> =
+            smol::run(EveReader::try_from(client).unwrap().try_collect());
         let alerts: Result<Vec<_>, Error> = alerts
             .expect("Failed to get alerts")
             .into_iter()
