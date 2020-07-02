@@ -8,10 +8,22 @@
 //! # use futures::TryStreamExt;
 //! # use std::path::PathBuf;
 //!
+//! struct Packet {
+//!     data: Vec<u8>,
+//!     timestamp: std::time::SystemTime,
+//! }
+//!
+//! impl AsIpcPacket for Packet {
+//!     fn timestamp(&self) -> &std::time::SystemTime {
+//!         &self.timestamp
+//!     }
+//!     fn data(&self) -> &[u8] {
+//!         self.data.as_slice()
+//!     }
+//! }
+//!
 //! fn main() {
 //!     let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-//!         .parent().expect("Invalid path")
-//!         .parent().expect("Invalid path")
 //!         .join("resources");
 //!     let config = Config::default();
 //!     let rules = Rules::from_path(resources.join("test.rules")).expect("Could not parse rules");
@@ -22,7 +34,7 @@
 //!         let mut ids = Ids::new(config).await.expect("Failed to create ids");
 //!         let ids_alerts = ids.take_messages().expect("No alerts");
 //!
-//!         let packets = vec![];
+//!         let packets: Vec<Packet> = vec![];
 //!         ids.send(packets.as_slice()).expect("Failed to send packets");
 //!
 //!         let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
