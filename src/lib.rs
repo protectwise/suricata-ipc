@@ -3,7 +3,7 @@
 //! Provide access to suricata via a library-like interface. Allows packets to be sent to suricata
 //! and alerts received.
 //!
-//! ```rust,norun
+//! ```rust,no_run
 //! # use suricata_ipc::prelude::*;
 //! # use futures::TryStreamExt;
 //! # use std::path::PathBuf;
@@ -33,9 +33,10 @@
 //!     smol::run(async move {
 //!         let mut ids = Ids::new(config).await.expect("Failed to create ids");
 //!         let ids_alerts = ids.take_messages().expect("No alerts");
+//!         let sender = ids.take_sender().expect("No sender");
 //!
 //!         let packets: Vec<Packet> = vec![];
-//!         ids.send(packets.as_slice()).expect("Failed to send packets");
+//!         sender.send(packets.as_slice()).expect("Failed to send packets");
 //!
 //!         let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
 //!         let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to receive alerts")
@@ -111,7 +112,7 @@ use std::path::PathBuf;
 pub struct Ids<'a, T> {
     reader: Option<EveReader<T>>,
     process: Option<IdsProcess>,
-    ipc_server: packet_ipc::ConnectedIpc<'a>,
+    senders: Vec<PacketSender<'a>>,
 }
 
 unsafe impl<'a, T> Send for Ids<'a, T> {}
@@ -138,14 +139,15 @@ impl Drop for IdsProcess {
 }
 
 impl<'a, M> Ids<'a, M> {
-    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
-        let packets_sent = packets.len();
-        self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
-        Ok(packets_sent)
+    pub fn take_sender(&mut self) -> Option<PacketSender<'a>> {
+        self.senders.pop()
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        self.ipc_server.close().map_err(Error::PacketIpc)
+        for sender in &mut self.senders {
+            sender.close()?;
+        }
+        Ok(())
     }
 
     pub fn take_messages(&mut self) -> Option<EveReader<M>> {
@@ -161,9 +163,11 @@ impl<'a, M> Ids<'a, M> {
     }
 
     pub async fn new(args: Config) -> Result<Ids<'a, M>, Error> {
-        //need a one shot server name to give to suricata
-        let server = packet_ipc::Server::new().map_err(Error::from)?;
-        let server_name = server.name().clone();
+        //need connections to give names to servers
+        let servers: Result<Vec<_>, _> = (0..args.connections)
+            .map(|_| packet_ipc::Server::new().map_err(Error::from))
+            .collect();
+        let servers = servers?;
 
         let listener_and_path = if let AlertConfiguration::Uds(uds) = &args.alerts {
             if uds.external_listener {
@@ -193,7 +197,8 @@ impl<'a, M> Ids<'a, M> {
             (None, None)
         };
 
-        let ipc = format!("--ipc={}", server_name);
+        let server_names: Vec<_> = servers.iter().map(|s| s.name().clone()).collect();
+        let ipc = format!("--ipc={}", server_names.join(","));
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         command
             .args(&["-c", args.materialize_config_to.to_str().unwrap(), &ipc])
@@ -245,7 +250,14 @@ impl<'a, M> Ids<'a, M> {
 
         smol::Task::spawn(lines).detach();
 
-        let connected_ipc = smol::Task::blocking(async move { server.accept() }).await?;
+        let connections = servers
+            .into_iter()
+            .map(|s| smol::Task::blocking(async move { s.accept() }));
+        let connections: Result<Vec<_>, _> = futures::future::join_all(connections)
+            .await
+            .into_iter()
+            .collect();
+        let connections = connections?;
 
         debug!("IPC Connection formed");
 
@@ -265,7 +277,29 @@ impl<'a, M> Ids<'a, M> {
                 inner: process,
                 alert_path: path,
             }),
-            ipc_server: connected_ipc,
+            senders: connections
+                .into_iter()
+                .map(|c| PacketSender { inner: c })
+                .collect(),
         })
     }
 }
+
+pub struct PacketSender<'a> {
+    inner: packet_ipc::ConnectedIpc<'a>,
+}
+
+impl<'a> PacketSender<'a> {
+    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
+        let packets_sent = packets.len();
+        self.inner.send(packets)?;
+        Ok(packets_sent)
+    }
+
+    pub fn close(&mut self) -> Result<(), Error> {
+        self.inner.close().map_err(Error::PacketIpc)
+    }
+}
+
+unsafe impl<'a> Send for PacketSender<'a> {}
+unsafe impl<'a> Sync for PacketSender<'a> {}

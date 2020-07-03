@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime};
 #[cfg(feature = "protobuf")]
 use suricata_ipc::prelude::proto::Eve;
 use suricata_ipc::prelude::*;
+use suricata_ipc::PacketSender;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
@@ -48,15 +49,19 @@ struct TestResult<T> {
 
 #[async_trait]
 trait TestRunner {
-    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize;
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize;
+    fn senders(&self) -> usize;
 }
 
 struct TracerTestRunner;
 
 #[async_trait]
 impl TestRunner for TracerTestRunner {
-    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
-        send_tracer(ids, SystemTime::now()).await
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize {
+        send_tracer(ids, sender, SystemTime::now()).await
+    }
+    fn senders(&self) -> usize {
+        1
     }
 }
 
@@ -64,18 +69,21 @@ struct MultiTracerTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerTestRunner {
-    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
-        send_tracers(ids).await
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize {
+        send_tracers(ids, sender).await
+    }
+    fn senders(&self) -> usize {
+        1
     }
 }
 
-async fn send_tracers<'a, T>(ids: &'a Ids<'a, T>) -> usize {
+async fn send_tracers<'a, T>(ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize {
     let now = SystemTime::now();
-    send_tracer(ids, now - Duration::from_secs(600)).await;
+    send_tracer(ids, sender, now - Duration::from_secs(600)).await;
     smol::Timer::after(Duration::from_secs(1)).await;
-    send_tracer(ids, now - Duration::from_secs(300)).await;
+    send_tracer(ids, sender, now - Duration::from_secs(300)).await;
     smol::Timer::after(Duration::from_secs(1)).await;
-    send_tracer(ids, now).await;
+    send_tracer(ids, sender, now).await;
     3
 }
 
@@ -83,26 +91,38 @@ struct MultiTracerReloadTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerReloadTestRunner {
-    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
-        send_tracers_with_reload(ids).await
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize {
+        send_tracers_with_reload(ids, sender).await
+    }
+    fn senders(&self) -> usize {
+        1
     }
 }
 
-async fn send_tracers_with_reload<'a, T>(ids: &'a Ids<'a, T>) -> usize {
+async fn send_tracers_with_reload<'a, T>(
+    ids: &'a Ids<'a, T>,
+    sender: &'a PacketSender<'a>,
+) -> usize {
     let now = SystemTime::now();
-    send_tracer(ids, now - Duration::from_secs(600)).await;
+    send_tracer(ids, sender, now - Duration::from_secs(600)).await;
     smol::Timer::after(Duration::from_secs(1)).await;
     assert!(ids.reload_rules());
-    send_tracer(ids, now - Duration::from_secs(300)).await;
+    send_tracer(ids, sender, now - Duration::from_secs(300)).await;
     smol::Timer::after(Duration::from_secs(1)).await;
-    send_tracer(ids, now).await;
+    send_tracer(ids, sender, now).await;
     3
 }
 
-async fn send_tracer<'a, T>(ids: &'a Ids<'a, T>, ts: SystemTime) -> usize {
+async fn send_tracer<'a, T>(
+    _ids: &'a Ids<'a, T>,
+    sender: &'a PacketSender<'a>,
+    ts: SystemTime,
+) -> usize {
     let data = Tracer::data().to_vec();
     let p = net_parser_rs::PcapRecord::new(ts, data.len() as _, data.len() as _, &data);
-    ids.send(&[WrapperPacket::new(&p)]).expect("Failed to send");
+    sender
+        .send(&[WrapperPacket::new(&p)])
+        .expect("Failed to send");
 
     1
 }
@@ -128,15 +148,19 @@ impl PcapPathTestRunner {
 
 #[async_trait]
 impl TestRunner for PcapPathTestRunner {
-    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize {
         let (_, f) = net_parser_rs::CaptureFile::parse(self.pcap_bytes()).expect("Failed to parse");
-        send_packets_from_file(f.records, ids).await
+        send_packets_from_file(f.records, ids, sender).await
+    }
+    fn senders(&self) -> usize {
+        1
     }
 }
 
 async fn send_packets_from_file<'a, T>(
     records: net_parser_rs::PcapRecords<'a>,
-    ids: &'a Ids<'a, T>,
+    _ids: &'a Ids<'a, T>,
+    sender: &'a PacketSender<'a>,
 ) -> usize {
     let mut packets_sent = 0;
 
@@ -150,7 +174,7 @@ async fn send_packets_from_file<'a, T>(
     });
 
     while let Some(ref packets) = packets.next() {
-        packets_sent += ids
+        packets_sent += sender
             .send(packets.as_slice())
             .expect("Failed to send packets");
         smol::Timer::after(Duration::from_millis(10)).await;
@@ -160,7 +184,37 @@ async fn send_packets_from_file<'a, T>(
     packets_sent
 }
 
-async fn run_ids<'a, M, T: TestRunner>(runner: T) -> Result<TestResult<M>, Error>
+struct PcapPathTestRunnerMulti {
+    pcap_bytes: Vec<u8>,
+}
+
+impl PcapPathTestRunnerMulti {
+    pub fn new(pcap_path: PathBuf) -> PcapPathTestRunner {
+        let mut f = File::open(pcap_path).expect("Could not open file");
+        let mut pcap_bytes = vec![];
+        f.read_to_end(&mut pcap_bytes).expect("Failed to read file");
+        PcapPathTestRunner {
+            pcap_bytes: pcap_bytes,
+        }
+    }
+
+    pub fn pcap_bytes(&self) -> &[u8] {
+        &self.pcap_bytes
+    }
+}
+
+#[async_trait]
+impl TestRunner for PcapPathTestRunnerMulti {
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>, sender: &'a PacketSender<'a>) -> usize {
+        let (_, f) = net_parser_rs::CaptureFile::parse(self.pcap_bytes()).expect("Failed to parse");
+        send_packets_from_file(f.records, ids, sender).await
+    }
+    fn senders(&self) -> usize {
+        2
+    }
+}
+
+async fn run_ids<'a, M, T>(runner: T) -> Result<TestResult<M>, Error>
 where
     T: TestRunner,
     M: for<'de> serde::Deserialize<'de>,
@@ -183,10 +237,7 @@ where
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
     let mut ids_args = Config::default();
-    ids_args.enable_dns = true;
-    ids_args.enable_http = true;
-    ids_args.enable_smtp = true;
-    ids_args.enable_tls = true;
+    ids_args.connections = runner.senders();
     ids_args.materialize_config_to = suricata_yaml;
     ids_args.alerts = AlertConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
@@ -198,12 +249,13 @@ where
 
     let mut ids_messages = ids.take_messages().expect("No alerts");
 
-    let packets_sent = runner.run(&mut ids).await;
+    let mut sender = ids.take_sender().unwrap();
+    let packets_sent = runner.run(&ids, &sender).await;
 
     smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
     info!("Packets sent, closing connection");
-    ids.close()?;
+    sender.close()?;
 
     smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
@@ -235,6 +287,46 @@ fn ids_process_testmyids() {
     let pcap_path = cargo_dir.join("resources").join("testmyids.pcap");
 
     let runner = PcapPathTestRunner::new(pcap_path);
+
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::block_on(run_ids(runner)).expect("Failed to run");
+
+    let mut alerts = 0;
+
+    for eve in result.messages {
+        if let EveEventType::Alert(ref alert) = eve.event {
+            alerts += 1;
+            assert_eq!(
+                alert.event_fields.src_ip,
+                "82.165.177.154"
+                    .parse::<std::net::IpAddr>()
+                    .expect("Failed to parse")
+            );
+            assert_eq!(
+                alert.event_fields.dest_ip,
+                "10.16.1.11"
+                    .parse::<std::net::IpAddr>()
+                    .expect("Failed to parse")
+            );
+            assert_eq!(alert.info.signature_id, 2100498);
+            assert!(result.intel_cache.observed(eve).is_some());
+        }
+    }
+
+    assert_eq!(result.packets_sent, 10);
+    assert_eq!(alerts, 1);
+}
+
+#[test]
+fn ids_process_testmyids_multi() {
+    let _ = env_logger::try_init();
+
+    prepare_executor();
+
+    let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pcap_path = cargo_dir.join("resources").join("testmyids.pcap");
+
+    let runner = PcapPathTestRunnerMulti::new(pcap_path);
 
     let result: TestResult<suricata_ipc::prelude::EveMessage> =
         smol::block_on(run_ids(runner)).expect("Failed to run");

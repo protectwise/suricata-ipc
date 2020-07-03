@@ -91,6 +91,8 @@ impl Default for AlertConfiguration {
 
 /// Configuration options for suricata
 pub struct Config {
+    /// How many connections we should form to suricata for sending packets
+    pub connections: usize,
     /// Whether statistics should be enabled (output) for suricata, defaults to true
     pub enable_stats: bool,
     /// Whether flows should be enabled (output) for suricata, defaults to true
@@ -124,6 +126,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            connections: 1,
             enable_stats: true,
             enable_flows: true,
             enable_dns: false,
