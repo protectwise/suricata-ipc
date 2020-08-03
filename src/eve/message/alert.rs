@@ -18,12 +18,7 @@ pub struct AlertInfo {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Alert {
-    pub src_ip: std::net::IpAddr,
-    pub src_port: u32,
-    pub dest_ip: std::net::IpAddr,
-    pub dest_port: u32,
-    pub proto: String,
-    pub community_id: Option<String>,
-    pub alert: AlertInfo,
-    pub flow: AlertFlowInfo,
+    #[serde(flatten)]
+    pub event_fields: super::EventFields,
+    pub info: AlertInfo,
 }

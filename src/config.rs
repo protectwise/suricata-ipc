@@ -31,6 +31,10 @@ struct ConfigTemplate<'a> {
     internal_ips: &'a InternalIps,
     stats: &'a str,
     flows: bool,
+    http: bool,
+    dns: bool,
+    tls: bool,
+    smtp: bool,
     max_pending_packets: &'a str,
 }
 
@@ -91,6 +95,14 @@ pub struct Config {
     pub enable_stats: bool,
     /// Whether flows should be enabled (output) for suricata
     pub enable_flows: bool,
+    /// Whether http should be enabled (output) for suricata
+    pub enable_http: bool,
+    /// Whether dns should be enabled (output) for suricata
+    pub enable_dns: bool,
+    /// Whether smtp should be enabled (output) for suricata
+    pub enable_smtp: bool,
+    /// Whether tls should be enabled (output) for suricata
+    pub enable_tls: bool,
     /// Whether community id should be enabled
     pub enable_community_id: bool,
     /// Path where config will be materialized to
@@ -114,6 +126,10 @@ impl Default for Config {
         Config {
             enable_stats: true,
             enable_flows: true,
+            enable_dns: true,
+            enable_smtp: true,
+            enable_http: true,
+            enable_tls: true,
             enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {
@@ -159,6 +175,10 @@ impl Config {
             internal_ips: internal_ips,
             stats: &stats,
             flows: self.enable_flows,
+            http: self.enable_http,
+            dns: self.enable_dns,
+            smtp: self.enable_smtp,
+            tls: self.enable_tls,
             max_pending_packets: &max_pending_packets,
         };
         debug!("Attempting to render");

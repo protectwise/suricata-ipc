@@ -58,16 +58,49 @@ mod config;
 mod errors;
 mod eve;
 mod intel;
+#[allow(dead_code)]
+#[cfg(feature = "protobuf")]
+mod serde_helpers;
 
 pub mod prelude {
     pub use super::config::{AlertConfiguration, Config, Redis, Uds};
     pub use super::errors::Error;
-    pub use super::eve::{EveAlert, EveEventType, EveMessage, EveReader, EveStats};
+    pub use super::eve::*;
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
+    #[cfg(feature = "protobuf")]
+    pub use super::proto;
     pub use super::Ids;
     pub use packet_ipc::AsIpcPacket;
 
     pub use chrono;
+}
+
+#[cfg(feature = "protobuf")]
+pub(crate) use eve::parse_date_time;
+
+#[allow(missing_docs)]
+#[cfg(feature = "protobuf")]
+pub mod proto {
+    tonic::include_proto!("suricata");
+
+    impl crate::intel::Observable for Eve {
+        fn timestamp(&self) -> chrono::DateTime<chrono::Utc> {
+            self.timestamp
+                .clone()
+                .map(|ts| {
+                    let ts = chrono::NaiveDateTime::from_timestamp(ts.seconds, ts.nanos as _);
+                    chrono::DateTime::from_utc(ts, chrono::Utc)
+                })
+                .unwrap_or_else(|| chrono::Utc::now())
+        }
+
+        fn key(&self) -> Option<crate::intel::IdsKey> {
+            self.alert.as_ref().map(|a| crate::intel::IdsKey {
+                gid: a.gid as _,
+                sid: a.signature_id as _,
+            })
+        }
+    }
 }
 
 use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
@@ -76,15 +109,15 @@ use prelude::*;
 use std::future::Future;
 use std::{path::PathBuf, pin::Pin};
 
-pub struct Ids<'a> {
-    reader: Option<EveReader>,
+pub struct Ids<'a, T> {
+    reader: Option<EveReader<T>>,
     process: Option<IdsProcess>,
     ipc_server: packet_ipc::ConnectedIpc<'a>,
     output: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
-unsafe impl<'a> Send for Ids<'a> {}
-unsafe impl<'a> Sync for Ids<'a> {}
+unsafe impl<'a, T> Send for Ids<'a, T> {}
+unsafe impl<'a, T> Sync for Ids<'a, T> {}
 
 pub struct IdsProcess {
     pub inner: std::process::Child,
@@ -106,7 +139,7 @@ impl Drop for IdsProcess {
     }
 }
 
-impl<'a> Ids<'a> {
+impl<'a, M> Ids<'a, M> {
     pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
         let packets_sent = packets.len();
         self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
@@ -121,7 +154,7 @@ impl<'a> Ids<'a> {
         self.output.take()
     }
 
-    pub fn take_messages(&mut self) -> Option<EveReader> {
+    pub fn take_messages(&mut self) -> Option<EveReader<M>> {
         self.reader.take()
     }
 
@@ -133,7 +166,7 @@ impl<'a> Ids<'a> {
         }
     }
 
-    pub async fn new(args: Config) -> Result<Ids<'a>, Error> {
+    pub async fn new(args: Config) -> Result<Ids<'a, M>, Error> {
         //need a one shot server name to give to suricata
         let server = packet_ipc::Server::new().map_err(Error::from)?;
         let server_name = server.name().clone();

@@ -38,6 +38,12 @@ pub struct Tcp {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Stats {
+    pub stats: StatsInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatsInfo {
+    pub uptime: i64,
     pub decoder: Decoder,
     pub flow: Flow,
     pub tcp: Tcp,

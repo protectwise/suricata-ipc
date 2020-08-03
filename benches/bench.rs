@@ -94,8 +94,7 @@ async fn run_ids<T: AsRef<Path>>(
     ids.close()?;
 
     let messages: Result<Vec<_>, Error> = ids_messages.try_collect().await;
-    let messages: Result<Vec<_>, Error> = messages?.into_iter().flat_map(|v| v).collect();
-    let messages = messages?;
+    let messages: Vec<_> = messages?.into_iter().flat_map(|v| v).collect();
 
     info!("Finished collecting alerts");
 

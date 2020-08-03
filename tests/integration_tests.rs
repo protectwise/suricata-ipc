@@ -1,11 +1,13 @@
 #![deny(unused_must_use, unused_imports, bare_trait_objects)]
 use async_trait::async_trait;
-use futures::TryStreamExt;
+use futures::StreamExt;
 use log::*;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
+#[cfg(feature = "protobuf")]
+use suricata_ipc::prelude::proto::Eve;
 use suricata_ipc::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
@@ -31,22 +33,22 @@ impl<'a> AsIpcPacket for WrapperPacket<'a> {
     }
 }
 
-struct TestResult {
+struct TestResult<T> {
     packets_sent: usize,
-    messages: Vec<EveMessage>,
+    messages: Vec<T>,
     intel_cache: IntelCache<Rule>,
 }
 
 #[async_trait]
 trait TestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize;
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize;
 }
 
 struct TracerTestRunner;
 
 #[async_trait]
 impl TestRunner for TracerTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
         send_tracer(ids, SystemTime::now()).await
     }
 }
@@ -55,12 +57,12 @@ struct MultiTracerTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
         send_tracers(ids).await
     }
 }
 
-async fn send_tracers<'a>(ids: &'a Ids<'a>) -> usize {
+async fn send_tracers<'a, T>(ids: &'a Ids<'a, T>) -> usize {
     let now = SystemTime::now();
     send_tracer(ids, now - Duration::from_secs(600)).await;
     smol::Timer::after(Duration::from_secs(1)).await;
@@ -74,12 +76,12 @@ struct MultiTracerReloadTestRunner;
 
 #[async_trait]
 impl TestRunner for MultiTracerReloadTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
         send_tracers_with_reload(ids).await
     }
 }
 
-async fn send_tracers_with_reload<'a>(ids: &'a Ids<'a>) -> usize {
+async fn send_tracers_with_reload<'a, T>(ids: &'a Ids<'a, T>) -> usize {
     let now = SystemTime::now();
     send_tracer(ids, now - Duration::from_secs(600)).await;
     smol::Timer::after(Duration::from_secs(1)).await;
@@ -90,7 +92,7 @@ async fn send_tracers_with_reload<'a>(ids: &'a Ids<'a>) -> usize {
     3
 }
 
-async fn send_tracer<'a>(ids: &'a Ids<'a>, ts: SystemTime) -> usize {
+async fn send_tracer<'a, T>(ids: &'a Ids<'a, T>, ts: SystemTime) -> usize {
     let data = Tracer::data().to_vec();
     let p = net_parser_rs::PcapRecord::new(ts, data.len() as _, data.len() as _, &data);
     ids.send(&[WrapperPacket::new(&p)]).expect("Failed to send");
@@ -119,15 +121,15 @@ impl PcapPathTestRunner {
 
 #[async_trait]
 impl TestRunner for PcapPathTestRunner {
-    async fn run<'a>(&'a mut self, ids: &'a Ids<'a>) -> usize {
+    async fn run<'a, T>(&'a mut self, ids: &'a Ids<'a, T>) -> usize {
         let (_, f) = net_parser_rs::CaptureFile::parse(self.pcap_bytes()).expect("Failed to parse");
         send_packets_from_file(f.records, ids).await
     }
 }
 
-async fn send_packets_from_file<'a>(
+async fn send_packets_from_file<'a, T>(
     records: net_parser_rs::PcapRecords<'a>,
-    ids: &'a Ids<'a>,
+    ids: &'a Ids<'a, T>,
 ) -> usize {
     let mut packets_sent = 0;
 
@@ -151,7 +153,11 @@ async fn send_packets_from_file<'a>(
     packets_sent
 }
 
-async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
+async fn run_ids<'a, M, T: TestRunner>(runner: T) -> Result<TestResult<M>, Error>
+where
+    T: TestRunner,
+    M: for<'de> serde::Deserialize<'de>,
+{
     let mut runner = runner;
 
     let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -170,6 +176,10 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
     let mut ids_args = Config::default();
+    ids_args.enable_dns = true;
+    ids_args.enable_http = true;
+    ids_args.enable_smtp = true;
+    ids_args.enable_tls = true;
     ids_args.materialize_config_to = suricata_yaml;
     ids_args.alerts = AlertConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
@@ -177,13 +187,13 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
         PathBuf::from(std::env::var("SURICATA_EXE_PATH").unwrap_or("/usr/bin/suricata".to_owned()));
     ids_args.suriata_config_path =
         PathBuf::from(std::env::var("SURICATA_CONFIG_PATH").unwrap_or("/etc/suricata".to_owned()));
-    let mut ids = Ids::new(ids_args).await?;
+    let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
     let ids_output = ids.take_output().expect("No output");
 
     smol::Task::spawn(ids_output).detach();
 
-    let ids_messages = ids.take_messages().expect("No alerts");
+    let mut ids_messages = ids.take_messages().expect("No alerts");
 
     let packets_sent = runner.run(&mut ids).await;
 
@@ -194,9 +204,14 @@ async fn run_ids<'a, T: TestRunner>(runner: T) -> Result<TestResult, Error> {
 
     smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
-    let messages: Result<Vec<_>, Error> = ids_messages.try_collect().await;
-    let messages: Result<Vec<_>, Error> = messages?.into_iter().flat_map(|v| v).collect();
-    let messages = messages?;
+    let mut messages = vec![];
+    loop {
+        if let Some(try_m) = ids_messages.next().await {
+            messages.extend(try_m?);
+        } else {
+            break;
+        }
+    }
 
     info!("Finished collecting alerts");
 
@@ -216,7 +231,8 @@ fn ids_process_testmyids() {
 
     let runner = PcapPathTestRunner::new(pcap_path);
 
-    let result = smol::run(run_ids(runner)).expect("Failed to run");
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -224,18 +240,18 @@ fn ids_process_testmyids() {
         if let EveEventType::Alert(ref alert) = eve.event {
             alerts += 1;
             assert_eq!(
-                alert.src_ip,
+                alert.event_fields.src_ip,
                 "82.165.177.154"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
             assert_eq!(
-                alert.dest_ip,
+                alert.event_fields.dest_ip,
                 "10.16.1.11"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
-            assert_eq!(alert.alert.signature_id, 2100498);
+            assert_eq!(alert.info.signature_id, 2100498);
             assert!(result.intel_cache.observed(eve).is_some());
         }
     }
@@ -250,7 +266,8 @@ fn ids_process_tracer() {
 
     let runner = TracerTestRunner;
 
-    let result = smol::run(run_ids(runner)).expect("Failed to run");
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -258,18 +275,18 @@ fn ids_process_tracer() {
         if let EveEventType::Alert(ref alert) = eve.event {
             alerts += 1;
             assert_eq!(
-                alert.src_ip,
+                alert.event_fields.src_ip,
                 "10.1.10.39"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
             assert_eq!(
-                alert.dest_ip,
+                alert.event_fields.dest_ip,
                 "75.75.75.75"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
-            assert_eq!(alert.alert.signature_id, Tracer::key().sid);
+            assert_eq!(alert.info.signature_id, Tracer::key().sid);
             let observed = result.intel_cache.observed(eve).expect("No intel");
             if let Observed::Tracer(_) = observed {
                 //ok
@@ -289,7 +306,8 @@ fn ids_process_tracer_multiple() {
 
     let runner = MultiTracerTestRunner;
 
-    let result = smol::run(run_ids(runner)).expect("Failed to run");
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -298,18 +316,18 @@ fn ids_process_tracer_multiple() {
         if let EveEventType::Alert(ref alert) = eve.event {
             alerts += 1;
             assert_eq!(
-                alert.src_ip,
+                alert.event_fields.src_ip,
                 "10.1.10.39"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
             assert_eq!(
-                alert.dest_ip,
+                alert.event_fields.dest_ip,
                 "75.75.75.75"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
-            assert_eq!(alert.alert.signature_id, Tracer::key().sid);
+            assert_eq!(alert.info.signature_id, Tracer::key().sid);
             let observed = result.intel_cache.observed(eve).expect("No intel");
             if let Observed::Tracer(_) = observed {
                 //ok
@@ -329,7 +347,8 @@ fn ids_process_tracer_multiple_reload() {
 
     let runner = MultiTracerReloadTestRunner;
 
-    let result = smol::run(run_ids(runner)).expect("Failed to run");
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::run(run_ids(runner)).expect("Failed to run");
 
     let mut alerts = 0;
 
@@ -337,18 +356,18 @@ fn ids_process_tracer_multiple_reload() {
         if let EveEventType::Alert(ref alert) = eve.event {
             alerts += 1;
             assert_eq!(
-                alert.src_ip,
+                alert.event_fields.src_ip,
                 "10.1.10.39"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
             assert_eq!(
-                alert.dest_ip,
+                alert.event_fields.dest_ip,
                 "75.75.75.75"
                     .parse::<std::net::IpAddr>()
                     .expect("Failed to parse")
             );
-            assert_eq!(alert.alert.signature_id, Tracer::key().sid);
+            assert_eq!(alert.info.signature_id, Tracer::key().sid);
             let observed = result.intel_cache.observed(eve).expect("No intel");
             if let Observed::Tracer(_) = observed {
                 //ok
@@ -373,7 +392,102 @@ fn ids_process_4sics() {
 
     let runner = PcapPathTestRunner::new(pcap_path);
 
-    let result = smol::run(run_ids(runner)).expect("Failed to run");
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::run(run_ids(runner)).expect("Failed to run");
+
+    assert_eq!(result.packets_sent, 246_137);
+
+    let mut alerts = 0;
+    let mut dns = 0;
+    let mut flows = 0;
+    let mut http = 0;
+    let mut smtp = 0;
+    let mut tls = 0;
+    let mut stats_messages = 0;
+    let mut packets = 0;
+
+    for msg in result.messages {
+        match msg.event {
+            EveEventType::Alert(a) => {
+                assert!(a.event_fields.community_id.is_some());
+                alerts += 1;
+            }
+            EveEventType::Dns(_) => {
+                dns += 1;
+            }
+            EveEventType::Flow(f) => {
+                assert!(f.event_fields.community_id.is_some());
+                flows += 1;
+            }
+            EveEventType::Http(_) => {
+                http += 1;
+            }
+            EveEventType::Smtp(_) => {
+                smtp += 1;
+            }
+            EveEventType::Stats(stats) => {
+                packets = stats.stats.decoder.pkts;
+                stats_messages += 1;
+            }
+            EveEventType::Tls(_) => {
+                tls += 1;
+            }
+        }
+    }
+
+    assert_eq!(alerts, 0);
+    assert_eq!(dns, 27_546);
+    assert_eq!(http, 0);
+    assert!(flows > 9_000);
+    assert_eq!(smtp, 0);
+    assert!(stats_messages > 1);
+    assert_eq!(tls, 0);
+    assert_eq!(packets, 246_137);
+}
+
+#[cfg(feature = "protobuf")]
+#[test]
+fn ids_process_tracer_proto() {
+    let _ = env_logger::try_init();
+
+    let runner = TracerTestRunner;
+
+    let result: TestResult<Eve> = smol::run(run_ids(runner)).expect("Failed to run");
+
+    let mut alerts = 0;
+
+    for eve in result.messages {
+        if let Some(alert) = &eve.alert {
+            alerts += 1;
+            assert_eq!(eve.src_ip.as_ref().unwrap(), "10.1.10.39");
+            assert_eq!(eve.dest_ip.as_ref().unwrap(), "75.75.75.75");
+            assert_eq!(alert.signature_id as u64, Tracer::key().sid);
+            let observed = result.intel_cache.observed(eve).expect("No intel");
+            if let Observed::Tracer(_) = observed {
+                //ok
+            } else {
+                panic!("Alert was not determed to be a tracer");
+            }
+        }
+    }
+
+    assert_eq!(result.packets_sent, 1);
+    assert_eq!(alerts, 1);
+}
+
+#[cfg(feature = "protobuf")]
+#[test]
+fn ids_process_4sics_proto() {
+    let _ = env_logger::try_init();
+
+    let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pcap_path = cargo_dir
+        .join("resources")
+        .join("4SICS-GeekLounge-151020.pcap");
+
+    let runner = PcapPathTestRunner::new(pcap_path);
+
+    let result: TestResult<Eve> = smol::run(run_ids(runner)).expect("Failed to run");
 
     assert_eq!(result.packets_sent, 246_137);
 
@@ -383,19 +497,15 @@ fn ids_process_4sics() {
     let mut packets = 0;
 
     for msg in result.messages {
-        match msg.event {
-            EveEventType::Alert(a) => {
-                assert!(a.community_id.is_some());
-                alerts += 1;
-            }
-            EveEventType::Stats { stats } => {
-                packets = stats.decoder.pkts;
-                stats_messages += 1;
-            }
-            EveEventType::Flow(f) => {
-                assert!(f.community_id.is_some());
-                flows += 1;
-            }
+        if let Some(_) = &msg.flow {
+            flows += 1;
+        }
+        if let Some(_) = &msg.alert {
+            alerts += 1;
+        }
+        if let Some(d) = &msg.stats_decoder {
+            packets = d.pkts;
+            stats_messages += 1;
         }
     }
 

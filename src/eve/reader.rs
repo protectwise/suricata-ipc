@@ -1,11 +1,10 @@
 use crate::errors::Error;
-use crate::eve::{json, EveMessage};
+use crate::eve::json;
 
 use futures::io::BufReader;
 use futures::{AsyncBufRead, Stream};
 use log::*;
 use pin_project::pin_project;
-use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -14,14 +13,18 @@ const BUFFER_SIZE: usize = 1_000_000;
 type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
 
 #[pin_project]
-pub struct EveReader {
+pub struct EveReader<T> {
     #[pin]
     inner: BufReader<AsyncStream>,
     buf: Vec<u8>,
+    marker: std::marker::PhantomData<T>,
 }
 
-impl Stream for EveReader {
-    type Item = Result<Vec<Result<EveMessage, Error>>, Error>;
+impl<T> Stream for EveReader<T>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    type Item = Result<Vec<T>, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
@@ -50,12 +53,20 @@ impl Stream for EveReader {
 
                         debug!("Alerts available");
 
-                        let alerts: Vec<_> = alerts
+                        let alerts: Result<Vec<_>, _> = alerts
                             .iter()
-                            .map(|v| EveMessage::try_from(v.as_slice()))
+                            .map(|v| {
+                                serde_json::from_slice::<T>(v.as_slice()).map_err(|e| {
+                                    debug!(
+                                        "Failed to decode: {}",
+                                        String::from_utf8(v.clone()).unwrap()
+                                    );
+                                    Error::SerdeJson(e)
+                                })
+                            })
                             .collect();
 
-                        Poll::Ready(Some(Ok(alerts)))
+                        Poll::Ready(Some(alerts))
                     }
                 }
             }
@@ -63,21 +74,23 @@ impl Stream for EveReader {
     }
 }
 
-impl std::convert::TryFrom<std::os::unix::net::UnixStream> for EveReader {
+impl<T> std::convert::TryFrom<std::os::unix::net::UnixStream> for EveReader<T> {
     type Error = Error;
     fn try_from(v: std::os::unix::net::UnixStream) -> Result<Self, Error> {
         Ok(Self {
             inner: BufReader::new(smol::Async::new(v).map_err(Error::from)?),
             buf: Vec::with_capacity(BUFFER_SIZE),
+            marker: std::marker::PhantomData,
         })
     }
 }
 
-impl From<smol::Async<std::os::unix::net::UnixStream>> for EveReader {
+impl<T> From<smol::Async<std::os::unix::net::UnixStream>> for EveReader<T> {
     fn from(v: smol::Async<std::os::unix::net::UnixStream>) -> Self {
         Self {
             inner: BufReader::new(v),
             buf: Vec::with_capacity(BUFFER_SIZE),
+            marker: std::marker::PhantomData,
         }
     }
 }
@@ -85,7 +98,9 @@ impl From<smol::Async<std::os::unix::net::UnixStream>> for EveReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prelude::EveMessage;
     use futures::{AsyncWriteExt, TryStreamExt};
+    use std::convert::TryFrom;
 
     #[test]
     fn reads_eve() {
@@ -106,14 +121,9 @@ mod tests {
 
         smol::Task::spawn(send_complete).detach();
 
-        let alerts: Result<Vec<_>, Error> =
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
             smol::run(EveReader::try_from(client).unwrap().try_collect());
-        let alerts: Result<Vec<_>, Error> = alerts
-            .expect("Failed to get alerts")
-            .into_iter()
-            .flat_map(|v| v)
-            .collect();
-        let alerts = alerts.expect("Failed to parse alerts");
+        let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 2);
     }
@@ -145,14 +155,9 @@ mod tests {
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<_>, Error> =
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
             smol::run(EveReader::try_from(client).unwrap().try_collect());
-        let alerts: Result<Vec<_>, Error> = alerts
-            .expect("Failed to get alerts")
-            .into_iter()
-            .flat_map(|v| v)
-            .collect();
-        let alerts = alerts.expect("Failed to parse alerts");
+        let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 2);
     }
@@ -178,14 +183,9 @@ mod tests {
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<_>, Error> =
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
             smol::run(EveReader::try_from(client).unwrap().try_collect());
-        let alerts: Result<Vec<_>, Error> = alerts
-            .expect("Failed to get alerts")
-            .into_iter()
-            .flat_map(|v| v)
-            .collect();
-        let alerts = alerts.expect("Failed to parse alerts");
+        let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 1);
     }

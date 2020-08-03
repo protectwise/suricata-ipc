@@ -5,7 +5,6 @@ pub use rules::{Rule, Rules};
 pub use tracer::Tracer;
 
 use crate::errors::Error;
-use crate::eve::{EveAlert, EveEventType, EveMessage};
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -36,7 +35,7 @@ impl<T> CachedRule<T> {
         }
     }
 
-    pub fn observed(&self, msg: EveAlert, ts: DateTime<Utc>) -> Observed<T>
+    pub fn observed<M>(&self, msg: M, ts: DateTime<Utc>) -> Observed<T, M>
     where
         T: Clone,
     {
@@ -51,11 +50,11 @@ impl<T> CachedRule<T> {
     }
 }
 
-pub enum Observed<T> {
+pub enum Observed<T, M> {
     Alert {
         rule: T,
         ts: DateTime<Utc>,
-        message: EveAlert,
+        message: M,
     },
     Tracer(DateTime<Utc>),
 }
@@ -66,21 +65,21 @@ pub struct IntelCache<T> {
 
 const LINE_SEPARATOR: &'static [u8] = &['\n' as _];
 
+pub trait Observable {
+    fn timestamp(&self) -> DateTime<Utc>;
+    fn key(&self) -> Option<IdsKey>;
+}
+
 impl<T> IntelCache<T> {
-    pub fn observed(&self, msg: EveMessage) -> Option<Observed<T>>
+    pub fn observed<M>(&self, msg: M) -> Option<Observed<T, M>>
     where
         T: Clone,
+        M: Observable,
     {
-        let ts = msg.timestamp;
-        if let EveEventType::Alert(alert) = msg.event {
-            let key = IdsKey {
-                gid: alert.alert.gid,
-                sid: alert.alert.signature_id,
-            };
-            self.inner.get(&key).map(|r| r.observed(alert, ts))
-        } else {
-            None
-        }
+        msg.key().and_then(|k| {
+            let ts = msg.timestamp();
+            self.inner.get(&k).map(|r| r.observed(msg, ts))
+        })
     }
 
     pub fn materialize_rules<P: AsRef<Path>>(&self, path: P) -> Result<(), Error>

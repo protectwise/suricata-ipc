@@ -3,26 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum State {
-    #[serde(rename = "new")]
-    New,
-    #[serde(rename = "established")]
-    Established,
-    #[serde(rename = "closed")]
-    Closed,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Tcp {
-    tcp_flags: usize,
-    syn: bool,
-    rst: bool,
-    ack: bool,
-    state: State,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct FlowState {
+pub struct FlowInfo {
+    pub age: usize,
     pub pkts_toserver: usize,
     pub pkts_toclient: usize,
     pub bytes_toserver: usize,
@@ -32,18 +14,14 @@ pub struct FlowState {
     #[serde(with = "date_format")]
     pub end: DateTime<Utc>,
     pub alerted: bool,
-    pub state: State,
+    pub state: super::State,
+    pub reason: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Flow {
-    pub src_ip: std::net::IpAddr,
-    pub src_port: u16,
-    pub dest_ip: std::net::IpAddr,
-    pub dest_port: u16,
-    pub proto: String,
-    pub app_proto: Option<String>,
-    pub community_id: Option<String>,
+    #[serde(flatten)]
+    pub event_fields: super::EventFields,
     #[serde(rename = "flow")]
-    pub state: FlowState,
+    pub info: FlowInfo,
 }
