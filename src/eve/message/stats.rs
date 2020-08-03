@@ -38,7 +38,8 @@ pub struct Tcp {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Stats {
-    pub stats: StatsInfo,
+    #[serde(rename = "stats")]
+    pub info: StatsInfo,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(eve.timestamp, expected_timestamp);
 
         if let EventType::Stats(stats) = eve.event {
-            assert_eq!(stats.stats.decoder.pkts, 50_900)
+            assert_eq!(stats.info.decoder.pkts, 50_900)
         } else {
             panic!("Not stats")
         }

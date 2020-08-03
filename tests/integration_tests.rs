@@ -426,7 +426,7 @@ fn ids_process_4sics() {
                 smtp += 1;
             }
             EveEventType::Stats(stats) => {
-                packets = stats.stats.decoder.pkts;
+                packets = stats.info.decoder.pkts;
                 stats_messages += 1;
             }
             EveEventType::Tls(_) => {

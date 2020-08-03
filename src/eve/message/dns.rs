@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Dns {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
+    #[serde(rename = "dns")]
     pub info: DnsInfo,
 }
 

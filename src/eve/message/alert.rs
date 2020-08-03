@@ -20,5 +20,6 @@ pub struct AlertInfo {
 pub struct Alert {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
+    #[serde(rename = "alert")]
     pub info: AlertInfo,
 }

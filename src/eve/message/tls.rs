@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Tls {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
+    #[serde(rename = "tls")]
     pub info: TlsInfo,
 }
 

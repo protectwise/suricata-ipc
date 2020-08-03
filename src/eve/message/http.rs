@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub struct Http {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
+    #[serde(rename = "http")]
     pub info: HttpInfo,
 }
 

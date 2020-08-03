@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Smtp {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
+    #[serde(rename = "smtp")]
     pub info: SmtpInfo,
 }
 
