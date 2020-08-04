@@ -249,7 +249,9 @@ impl<'a, M> Ids<'a, M> {
         .fuse()
         .boxed();
 
-        let connected_ipc = server.accept().map_err(Error::from)?;
+        let connected_ipc = smol::Task::blocking(async move {
+            server.accept()
+        }).await?;
 
         debug!("IPC Connection formed");
 
