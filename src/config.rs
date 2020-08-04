@@ -141,7 +141,13 @@ impl Default for Config {
             },
             alerts: AlertConfiguration::default(),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
-            suriata_config_path: PathBuf::from("/etc/suricata"),
+            suriata_config_path: {
+                if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
+                    e
+                } else {
+                    PathBuf::from("/etc/suricata")
+                }
+            },
             internal_ips: InternalIps(vec![
                 String::from("10.0.0.0/8,172.16.0.0/12"),
                 String::from("e80:0:0:0:0:0:0:0/64"),
