@@ -188,6 +188,17 @@ impl<'a, M> Ids<'a, M> {
 
         args.materialize()?;
 
+        let (future_connection, path) = if let Some((uds_listener, path)) = listener_and_path {
+            debug!("Spawning acceptor for uds connection from suricata");
+
+            let listener = smol::Async::new(uds_listener).map_err(Error::from)?;
+            let f = smol::Task::spawn(async move { listener.accept().await });
+
+            (Some(f), Some(path))
+        } else {
+            (None, None)
+        };
+
         let ipc = format!("--ipc={}", server_name);
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         command
@@ -242,24 +253,18 @@ impl<'a, M> Ids<'a, M> {
 
         debug!("IPC Connection formed");
 
-        let (reader, path) = if let Some((uds_listener, path)) = listener_and_path {
-            debug!("Waiting on uds connection from suricata");
-
-            let (uds_connection, uds_addr) = smol::Async::new(uds_listener)
-                .map_err(Error::from)?
-                .accept()
-                .await
-                .map_err(Error::from)?;
+        let opt_reader = if let Some(f) = future_connection {
+            let (uds_connection, uds_addr) = f.await?;
 
             debug!("UDS connection formed from {:?}", uds_addr);
 
-            (Some(uds_connection.into()), Some(path))
+            Some(uds_connection.into())
         } else {
-            (None, None)
+            None
         };
 
         Ok(Ids {
-            reader: reader,
+            reader: opt_reader,
             process: Some(IdsProcess {
                 inner: process,
                 alert_path: path,

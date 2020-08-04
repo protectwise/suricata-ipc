@@ -184,9 +184,9 @@ where
     ids_args.alerts = AlertConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
     ids_args.exe_path =
-        PathBuf::from(std::env::var("SURICATA_EXE_PATH").unwrap_or("/usr/bin/suricata".to_owned()));
+        PathBuf::from(std::env::var("SURICATA_EXE").unwrap_or("/usr/bin/suricata".to_owned()));
     ids_args.suriata_config_path =
-        PathBuf::from(std::env::var("SURICATA_CONFIG_PATH").unwrap_or("/etc/suricata".to_owned()));
+        PathBuf::from(std::env::var("SURICATA_CONFIG_DIR").unwrap_or("/etc/suricata".to_owned()));
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
     let ids_output = ids.take_output().expect("No output");
