@@ -328,4 +328,18 @@ mod tests {
             panic!("Not dns")
         }
     }
+
+    #[test]
+    fn should_decode_http() {
+        let msg = r#"{"timestamp":"2020-08-05T13:32:29.341318+0000","flow_id":1925256485615034,"event_type":"http","src_ip":"16.0.0.1","src_port":41668,"dest_ip":"48.0.0.1","dest_port":80,"proto":"TCP","tx_id":0,"community_id":"1:p1ceBUuGcR8ILP4a2kUZp97NUQM=","http":{"hostname":"22.0.0.3","url":"/3384","http_user_agent":"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; SV1; .NET CLR 1.1.4322; .NET CLR 2.0.50727)","http_content_type":"text/html","request_headers":[{"name":"Host","value":"22.0.0.3"},{"name":"Connection","value":"Keep-Alive"},{"name":"User-Agent","value":"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; SV1; .NET CLR 1.1.4322; .NET CLR 2.0.50727)"},{"name":"Accept","value":"*/*"},{"name":"Accept-Language","value":"en-us"},{"name":"Accept-Encoding","value":"gzip, deflate, compress"}],"response_headers":[{"name":"Server","value":"Microsoft-IIS/6.0"},{"name":"Content-Type","value":"text/html"},{"name":"Content-Length","value":"32000"}]}}"#;
+
+        let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
+
+        if let EventType::Http(v) = eve.event {
+            assert!(!v.info.request_headers.is_empty());
+            assert!(!v.info.response_headers.is_empty());
+        } else {
+            panic!("Not http")
+        }
+    }
 }

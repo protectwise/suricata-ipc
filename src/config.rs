@@ -91,19 +91,19 @@ impl Default for AlertConfiguration {
 
 /// Configuration options for suricata
 pub struct Config {
-    /// Whether statistics should be enabled (output) for suricata
+    /// Whether statistics should be enabled (output) for suricata, defaults to true
     pub enable_stats: bool,
-    /// Whether flows should be enabled (output) for suricata
+    /// Whether flows should be enabled (output) for suricata, defaults to true
     pub enable_flows: bool,
-    /// Whether http should be enabled (output) for suricata
+    /// Whether http should be enabled (output) for suricata, defaults to false
     pub enable_http: bool,
-    /// Whether dns should be enabled (output) for suricata
+    /// Whether dns should be enabled (output) for suricata, defaults to false
     pub enable_dns: bool,
-    /// Whether smtp should be enabled (output) for suricata
+    /// Whether smtp should be enabled (output) for suricata, defaults to false
     pub enable_smtp: bool,
-    /// Whether tls should be enabled (output) for suricata
+    /// Whether tls should be enabled (output) for suricata, defaults to false
     pub enable_tls: bool,
-    /// Whether community id should be enabled
+    /// Whether community id should be enabled, defaults to true
     pub enable_community_id: bool,
     /// Path where config will be materialized to
     pub materialize_config_to: PathBuf,
@@ -126,10 +126,10 @@ impl Default for Config {
         Config {
             enable_stats: true,
             enable_flows: true,
-            enable_dns: true,
-            enable_smtp: true,
-            enable_http: true,
-            enable_tls: true,
+            enable_dns: false,
+            enable_smtp: false,
+            enable_http: false,
+            enable_tls: false,
             enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {

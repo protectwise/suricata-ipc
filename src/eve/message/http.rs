@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Http {
@@ -35,5 +34,16 @@ pub struct HttpInfo {
     pub http_response_body: String,
     #[serde(default)]
     pub http_port: i32,
-    pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub request_headers: Vec<Header>,
+    #[serde(default)]
+    pub response_headers: Vec<Header>,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Header {
+    pub name: String,
+    pub value: String,
+}
+
+
