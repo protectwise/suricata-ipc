@@ -106,14 +106,12 @@ pub mod proto {
 use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
-use std::future::Future;
-use std::{path::PathBuf, pin::Pin};
+use std::path::PathBuf;
 
 pub struct Ids<'a, T> {
     reader: Option<EveReader<T>>,
     process: Option<IdsProcess>,
     ipc_server: packet_ipc::ConnectedIpc<'a>,
-    output: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
 unsafe impl<'a, T> Send for Ids<'a, T> {}
@@ -148,10 +146,6 @@ impl<'a, M> Ids<'a, M> {
 
     pub fn close(&mut self) -> Result<(), Error> {
         self.ipc_server.close().map_err(Error::PacketIpc)
-    }
-
-    pub fn take_output(&mut self) -> Option<Pin<Box<dyn Future<Output = ()> + Send>>> {
-        self.output.take()
     }
 
     pub fn take_messages(&mut self) -> Option<EveReader<M>> {
@@ -249,6 +243,8 @@ impl<'a, M> Ids<'a, M> {
         .fuse()
         .boxed();
 
+        smol::Task::spawn(lines).detach();
+
         let connected_ipc = smol::Task::blocking(async move { server.accept() }).await?;
 
         debug!("IPC Connection formed");
@@ -270,7 +266,6 @@ impl<'a, M> Ids<'a, M> {
                 alert_path: path,
             }),
             ipc_server: connected_ipc,
-            output: Some(lines),
         })
     }
 }
