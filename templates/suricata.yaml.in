@@ -47,7 +47,7 @@ vars:
 # The default logging directory.  Any log or output file will be
 # placed here if it's not specified with a full path name. This can be
 # overridden with the -l command line parameter.
-default-log-dir: /var/log/suricata
+default-log-dir: {{ log_dir }}
 
 # Global stats configuration
 stats:
@@ -546,7 +546,7 @@ logging:
   # compiled with the --enable-debug configure option.
   #
   # This value is overridden by the SC_LOG_LEVEL env var.
-  default-log-level: warning
+  default-log-level: info
 
   # The default output format.  Optional parameter, should default to
   # something reasonable if not provided.  Can be overridden in an

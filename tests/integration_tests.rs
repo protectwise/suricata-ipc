@@ -12,7 +12,7 @@ use suricata_ipc::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
-const ALERT_SOCKET: &'static str = "suricata.alerts";
+const EVE_SOCKET: &'static str = "eve.socket";
 
 fn prepare_executor() {
     for _ in 0..5 {
@@ -179,7 +179,7 @@ where
     let rules = temp_file.join(CUSTOM_RULES);
     cache.materialize_rules(rules.clone())?;
 
-    let alert_path = temp_file.join(ALERT_SOCKET);
+    let eve_socket_path = temp_file.join(EVE_SOCKET);
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
     let mut ids_args = Config::default();
@@ -188,7 +188,7 @@ where
     ids_args.enable_smtp = true;
     ids_args.enable_tls = true;
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.alerts = AlertConfiguration::uds(alert_path);
+    ids_args.eve = EveConfiguration::uds(eve_socket_path);
     ids_args.rule_path = rules;
     ids_args.exe_path =
         PathBuf::from(std::env::var("SURICATA_EXE").unwrap_or("/usr/bin/suricata".to_owned()));

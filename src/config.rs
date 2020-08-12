@@ -36,6 +36,7 @@ struct ConfigTemplate<'a> {
     tls: bool,
     smtp: bool,
     max_pending_packets: &'a str,
+    log_dir: std::borrow::Cow<'a, str>,
 }
 
 /// Configuration options for redis output
@@ -107,18 +108,26 @@ pub struct Config {
     pub enable_community_id: bool,
     /// Path where config will be materialized to
     pub materialize_config_to: PathBuf,
-    /// Path where the suricata executable lives
+    /// Path where the suricata executable lives, defaults to /usr/bin/suricata, can be overridden
+    /// with environment variable SURICATA_EXE
     pub exe_path: PathBuf,
     /// Configuration for eve
     pub eve: EveConfiguration,
     /// Path where the rules reside at
     pub rule_path: PathBuf,
-    /// Path where suricata config resides at (e.g. threshold config)
+    /// Path where suricata config resides at (e.g. threshold config), defaults to /etc/suricata,
+    /// can be overridden with environment variable SURICATA_CONFIG_DIR
     pub suriata_config_path: PathBuf,
     /// Internal ips to use for HOME_NET
     pub internal_ips: InternalIps,
     /// Max pending packets before suricata will block on incoming packets
     pub max_pending_packets: u16,
+    /// Path where suricata ipc plugin resides at, defaults to /usr/lib/ipc-plugin.so, can be
+    /// overridden with environment variable SURICATA_IPC_PLUGIN
+    pub ipc_plugin: PathBuf,
+    /// Path to log to, defaults to /var/log/suricata, can be overridden with environment variable
+    /// SURICATA_LOG_DIR
+    pub log_dir: PathBuf,
 }
 
 impl Default for Config {
@@ -133,7 +142,7 @@ impl Default for Config {
             enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {
-                if let Some(e) = std::env::var_os("SURICATA_EXE").map(|s| PathBuf::from(s)) {
+                if let Some(e) = std::env::var_os("SURICATA_EXE").map(PathBuf::from) {
                     e
                 } else {
                     PathBuf::from("/usr/local/bin/suricata")
@@ -142,7 +151,7 @@ impl Default for Config {
             eve: EveConfiguration::default(),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
             suriata_config_path: {
-                if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
+                if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(PathBuf::from) {
                     e
                 } else {
                     PathBuf::from("/etc/suricata")
@@ -157,6 +166,20 @@ impl Default for Config {
                 String::from("169.254.0.0/16"),
             ]),
             max_pending_packets: 800,
+            ipc_plugin: {
+                if let Some(e) = std::env::var_os("SURICATA_IPC_PLUGIN").map(PathBuf::from) {
+                    e
+                } else {
+                    PathBuf::from("/usr/lib/ipc-plugin.so")
+                }
+            },
+            log_dir: {
+                if let Some(e) = std::env::var_os("SURICATA_LOG_DIR").map(PathBuf::from) {
+                    e
+                } else {
+                    PathBuf::from("/var/log/suricata")
+                }
+            },
         }
     }
 }
@@ -172,6 +195,7 @@ impl Config {
         } else {
             "no"
         };
+        let log_dir = self.log_dir.to_string_lossy();
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
@@ -186,6 +210,7 @@ impl Config {
             smtp: self.enable_smtp,
             tls: self.enable_tls,
             max_pending_packets: &max_pending_packets,
+            log_dir: log_dir,
         };
         debug!("Attempting to render");
         let rendered = template.render().map_err(Error::from)?;

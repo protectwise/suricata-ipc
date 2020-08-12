@@ -1,0 +1,7 @@
+target
+*.o
+**/*/target
+**/*/*.o
+examples
+**/*/src/libs
+ipc-plugin/build

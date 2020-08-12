@@ -40,4 +40,15 @@ async fn main() {
 Install [lefthook](https://github.com/Arkweid/lefthook/blob/master/docs/full_guide.md). You can then run
 
     lefthook run develop
+    
+## Building IPC Plugin
+To build the ipc plugin, you will need the suricata source, then set 
+
+    SURICATA_SRC_DIR=/path/to/suricata
+    
+You can then run
+
+    lefthook run build-plugin
+    
+This will create the plugin in `ipc-plugin/build`
  

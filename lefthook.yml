@@ -1,3 +1,11 @@
+build-plugin:
+  piped: true
+  commands:
+    1_cmake:
+      cd ipc-plugin && cmake -S . -B build
+    2_make:
+      cd ipc-plugin/build && make
+
 develop:
   piped: true
   commands:
