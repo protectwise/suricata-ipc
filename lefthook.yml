@@ -1,8 +1,16 @@
+build-plugin:
+  piped: true
+  commands:
+    1_cmake:
+      cd ipc-plugin && cmake -S . -B build
+    2_make:
+      cd ipc-plugin/build && make
+
 develop:
   piped: true
   commands:
     1_pull_base:
-      run: docker pull ubuntu-xenial:latest
+      run: docker pull ubuntu:xenial
     2_build:
       run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t suricata-rs-dev:latest --target development -f docker/Dockerfile .
     3_develop:
@@ -12,7 +20,7 @@ test:
   piped: true
   commands:
     1_pull_base:
-      run: docker pull ubuntu-xenial:latest
+      run: docker pull ubuntu:xenial
     2_build:
       run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t suricata-rs-test:latest --target test -f docker/Dockerfile .
     3_develop:

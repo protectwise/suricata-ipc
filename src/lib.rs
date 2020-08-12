@@ -64,7 +64,9 @@ mod intel;
 mod serde_helpers;
 
 pub mod prelude {
-    pub use super::config::{Config, DumpAllHeaders, EveConfiguration, HttpConfig, Redis, Uds};
+    pub use super::config::{
+        Config, DumpAllHeaders, EveConfiguration, HttpConfig, InternalIps, Redis, Uds,
+    };
     pub use super::errors::Error;
     pub use super::eve::*;
     pub use super::intel::{
@@ -109,6 +111,8 @@ pub mod proto {
 use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
+
+//const READER_BUFFER_SIZE: usize = 128;
 
 pub struct Ids<'a, T> {
     readers: Vec<EveReader<T>>,
@@ -158,6 +162,11 @@ impl<'a, M> Ids<'a, M> {
     where
         M: Send + 'static,
     {
+        if (args.max_pending_packets as usize) < args.ipc_allocation_batch {
+            return Err(Error::Custom {
+                msg: "Max pending packets must be larger than IPC allocation batch".into(),
+            });
+        }
         //need a one shot server name to give to suricata
         let server = packet_ipc::Server::new().map_err(Error::from)?;
         let server_name = server.name().clone();
@@ -204,14 +213,18 @@ impl<'a, M> Ids<'a, M> {
             .collect();
         let future_connections = future_connections?;
 
-        let ipc = format!("--ipc={}", server_name);
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         command
             .args(&[
                 "-c",
                 args.materialize_config_to.to_str().unwrap(),
-                "i",
-                &ipc,
+                "--set",
+                &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
+                "--capture-plugin=ipc-plugin",
+                "--set",
+                &format!("ipc.server={}", server_name),
+                "--set",
+                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
             ])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())

@@ -216,7 +216,7 @@ logging:
   # compiled with the --enable-debug configure option.
   #
   # This value is overridden by the SC_LOG_LEVEL env var.
-  default-log-level: warning
+  default-log-level: info
 
   outputs:
   - console:
@@ -1131,5 +1131,4 @@ ipc:
 # searched for in the same directory as this configuration file. You may
 # use absolute pathnames too.
 # You can specify more than 2 configuration files, if needed.
-#include: include1.yaml
-#include: include2.yaml
+# include: include1.yaml
