@@ -227,7 +227,7 @@ logging:
   # compiled with the --enable-debug configure option.
   #
   # This value is overridden by the SC_LOG_LEVEL env var.
-  default-log-level: warning
+  default-log-level: info
 
   outputs:
   - console:
@@ -516,7 +516,7 @@ max-pending-packets: {{ max_pending_packets }}
 # Runmode the engine should use. Please check --list-runmodes to get the available
 # runmodes for each packet acquisition method. Default depends on selected capture
 # method. 'workers' generally gives best performance.
-#runmode: autofp
+runmode: workers
 
 # Specifies the kind of flow load balancer used by the flow pinned autofp mode.
 #
