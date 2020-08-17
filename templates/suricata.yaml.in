@@ -75,11 +75,11 @@ outputs:
   # Extensible Event Format (nicknamed EVE) event log in JSON format
   - eve-log:
       enabled: yes
-{% match alert %}
-    {% when AlertConfiguration::Uds with (val) %}
+{% match eve %}
+    {% when EveConfiguration::Uds with (val) %}
       filetype: unix_stream
       filename: {{ val.path.to_string_lossy() }}
-    {% when AlertConfiguration::Redis with (val) %}
+    {% when EveConfiguration::Redis with (val) %}
       filetype: redis
       redis:
         server: {{ val.server }}

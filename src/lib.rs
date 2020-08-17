@@ -63,7 +63,7 @@ mod intel;
 mod serde_helpers;
 
 pub mod prelude {
-    pub use super::config::{AlertConfiguration, Config, Redis, Uds};
+    pub use super::config::{EveConfiguration, Config, Redis, Uds};
     pub use super::errors::Error;
     pub use super::eve::*;
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
@@ -165,7 +165,7 @@ impl<'a, M> Ids<'a, M> {
         let server = packet_ipc::Server::new().map_err(Error::from)?;
         let server_name = server.name().clone();
 
-        let listener_and_path = if let AlertConfiguration::Uds(uds) = &args.alerts {
+        let listener_and_path = if let EveConfiguration::Uds(uds) = &args.eve {
             if uds.external_listener {
                 None
             } else {

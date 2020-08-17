@@ -25,7 +25,7 @@ impl std::fmt::Display for InternalIps {
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
     rules: &'a str,
-    alert: &'a AlertConfiguration,
+    eve: &'a EveConfiguration,
     community_id: &'a str,
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
@@ -68,13 +68,13 @@ impl Default for Uds {
     }
 }
 
-/// Alert configuration
-pub enum AlertConfiguration {
+/// Eve configuration
+pub enum EveConfiguration {
     Redis(Redis),
     Uds(Uds),
 }
 
-impl AlertConfiguration {
+impl EveConfiguration {
     pub fn uds(path: PathBuf) -> Self {
         Self::Uds(Uds {
             path: path,
@@ -83,7 +83,7 @@ impl AlertConfiguration {
     }
 }
 
-impl Default for AlertConfiguration {
+impl Default for EveConfiguration {
     fn default() -> Self {
         Self::Uds(Uds::default())
     }
@@ -109,8 +109,8 @@ pub struct Config {
     pub materialize_config_to: PathBuf,
     /// Path where the suricata executable lives
     pub exe_path: PathBuf,
-    /// Configuration for alerts
-    pub alerts: AlertConfiguration,
+    /// Configuration for eve
+    pub eve: EveConfiguration,
     /// Path where the rules reside at
     pub rule_path: PathBuf,
     /// Path where suricata config resides at (e.g. threshold config)
@@ -139,7 +139,7 @@ impl Default for Config {
                     PathBuf::from("/usr/local/bin/suricata")
                 }
             },
-            alerts: AlertConfiguration::default(),
+            eve: EveConfiguration::default(),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
             suriata_config_path: {
                 if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
@@ -175,7 +175,7 @@ impl Config {
         let max_pending_packets = format!("{}", self.max_pending_packets);
         let template = ConfigTemplate {
             rules: &rules,
-            alert: &self.alerts,
+            eve: &self.eve,
             community_id: &community_id,
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,

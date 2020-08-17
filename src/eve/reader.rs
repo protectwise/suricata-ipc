@@ -42,18 +42,16 @@ where
                 this.buf.extend_from_slice(available);
                 this.inner.as_mut().consume(bytes_read);
 
-                trace!("Collecting alerts from {} bytes", this.buf.len());
+                trace!("Collecting eve messages from {} bytes", this.buf.len());
                 match json::JsonParser::parse(this.buf.as_ref()) {
                     Err(e) => Poll::Ready(Some(Err(e))),
-                    Ok((rem, alerts)) => {
-                        debug!("Collected {} alerts", alerts.len());
+                    Ok((rem, msgs)) => {
+                        debug!("Collected {} eve messages", msgs.len());
                         let unread_position = this.buf.len() - rem.len();
                         let mut to_keep = this.buf.split_off(unread_position);
                         std::mem::swap(this.buf, &mut to_keep);
 
-                        debug!("Alerts available");
-
-                        let alerts: Result<Vec<_>, _> = alerts
+                        let msgs: Result<Vec<_>, _> = msgs
                             .iter()
                             .map(|v| {
                                 serde_json::from_slice::<T>(v.as_slice()).map_err(|e| {
@@ -66,7 +64,7 @@ where
                             })
                             .collect();
 
-                        Poll::Ready(Some(alerts))
+                        Poll::Ready(Some(msgs))
                     }
                 }
             }
