@@ -63,7 +63,7 @@ mod intel;
 mod serde_helpers;
 
 pub mod prelude {
-    pub use super::config::{EveConfiguration, Config, Redis, Uds};
+    pub use super::config::{Config, EveConfiguration, Redis, Uds};
     pub use super::errors::Error;
     pub use super::eve::*;
     pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
