@@ -10,7 +10,7 @@ mod tls;
 
 pub use alert::Alert;
 pub use date_format::parse_date_time;
-pub use dns::{Dns, DnsAnswer, DnsEventType, DnsQuery};
+pub use dns::{Dns, DnsAnswer, DnsEventType, DnsQuery, DnsInfo};
 pub use flow::Flow;
 pub use http::Http;
 pub use smtp::Smtp;
