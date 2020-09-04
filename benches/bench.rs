@@ -52,13 +52,9 @@ async fn run_ids<T: AsRef<Path>>(
 
     let mut ids_args = Config::default();
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.alerts = AlertConfiguration::uds(alert_path);
+    ids_args.eve = EveConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
     let mut ids = Ids::new(ids_args).await.expect("failed to create ids");
-
-    let ids_output = ids.take_output().expect("No output");
-
-    smol::Task::spawn(ids_output).detach();
 
     let ids_messages = ids.take_messages().expect("No alerts");
 
@@ -116,7 +112,7 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
             let (packets_sent, messages) = smol::run(f).expect("Failed to run");
 
             assert!(packets_sent >= 50000);
-            assert_eq!(messages.len(), 0);
+            assert!(messages.len() > 0);
         })
     });
 
