@@ -60,11 +60,17 @@ impl Rules {
         let lines = lines?;
         let rules: Vec<_> = lines
             .into_iter()
-            .flat_map(|l| match parse_rule(&l) {
-                Ok(r) => Some(r),
-                Err(e) => {
-                    warn!("Failed to parse rule '{}': {:?}", l, e);
+            .flat_map(|l| {
+                if l.starts_with("#") {
                     None
+                } else {
+                    match parse_rule(&l) {
+                        Ok(r) => Some(r),
+                        Err(e) => {
+                            warn!("Failed to parse rule '{}': {:?}", l, e);
+                            None
+                        }
+                    }
                 }
             })
             .collect();
@@ -92,12 +98,44 @@ impl Into<IntelCache<Rule>> for Rules {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[derive(Clone, Default)]
+    struct LogIntercept {
+        saw_record: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        saw_warning: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl log::Log for LogIntercept {
+        fn enabled(&self, _metadata: &Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &Record) {
+            self.saw_record
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            let s = record.args().to_string();
+            if s.contains("Failed to parse rule '#'") {
+                self.saw_warning
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+
+        /// Flushes any buffered records.
+        fn flush(&self) {}
+    }
+
     #[test]
     fn parse_rules() {
-        let _ = env_logger::try_init();
+        let logger = Box::new(LogIntercept::default());
+
+        log::set_boxed_logger(logger.clone()).unwrap();
+        log::set_max_level(LevelFilter::Debug);
+
         let rules_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
             .join("test.rules");
+
+        info!("Checking logger");
 
         let rules = Rules::from_path(rules_path).expect("Failed to get rules");
 
@@ -119,5 +157,10 @@ mod tests {
                 sid: 3016009
             })
             .is_some());
+
+        assert!(logger.saw_record.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!logger
+            .saw_warning
+            .load(std::sync::atomic::Ordering::Relaxed));
     }
 }
