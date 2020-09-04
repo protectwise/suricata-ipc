@@ -188,7 +188,7 @@ where
     ids_args.enable_smtp = true;
     ids_args.enable_tls = true;
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.alerts = AlertConfiguration::uds(alert_path);
+    ids_args.eve = EveConfiguration::uds(alert_path);
     ids_args.rule_path = rules;
     ids_args.exe_path =
         PathBuf::from(std::env::var("SURICATA_EXE").unwrap_or("/usr/bin/suricata".to_owned()));
