@@ -1,4 +1,4 @@
-FROM ubuntu:focal AS system-setup
+FROM ubuntu:xenial AS system-setup
 
 WORKDIR /build
 
@@ -7,7 +7,7 @@ RUN apt-get update -y \
   && apt-get install -y \
     curl \
     g++ \
-    clang-10 \
+    clang-8 \
     automake \
     git \
     libtool \
@@ -100,7 +100,17 @@ ENTRYPOINT ["/bin/bash"]
 
 FROM development AS build-plugin
 
-RUN apt-get update && apt-get install -y cmake
+#Xenial needs a new version of cmake (3.18.2)
+
+RUN sudo apt-get update \
+    && apt-get install apt-transport-https ca-certificates gnupg software-properties-common wget \
+    && wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null \
+    && apt-add-repository 'deb https://apt.kitware.com/ubuntu/ xenial main' \
+    && apt-get update \
+    && apt-get install -y cmake
+
+
+#RUN apt-get update && apt-get install -y cmake
 
 ADD /ipc-plugin ipc-plugin
 
