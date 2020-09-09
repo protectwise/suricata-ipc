@@ -7,7 +7,7 @@ use pin_project::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-const BUFFER_SIZE: usize = 65_535;
+const BUFFER_SIZE: usize = 131_070;
 
 type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
 
@@ -18,6 +18,7 @@ pub struct EveReader<T> {
     buf: Vec<u8>,
     last_offset: usize,
     marker: std::marker::PhantomData<T>,
+    complete: bool,
 }
 
 impl<T> Stream for EveReader<T>
@@ -28,6 +29,11 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
+
+        if *this.complete {
+            return Poll::Ready(None);
+        }
+
         let last_offset = *this.last_offset;
         if this.buf.len() != BUFFER_SIZE {
             this.buf
@@ -38,11 +44,15 @@ where
             .as_mut()
             .poll_read(cx, &mut this.buf[last_offset..]))
         {
-            Err(e) => Poll::Ready(Some(Err(Error::from(e)))),
+            Err(e) => {
+                *this.complete = true;
+                Poll::Ready(Some(Err(Error::from(e))))
+            }
             Ok(bytes_read) => {
                 trace!("Read {}B", bytes_read);
 
                 if bytes_read == 0 {
+                    *this.complete = true;
                     return Poll::Ready(None);
                 }
 
@@ -51,14 +61,19 @@ where
 
                 trace!("Collecting eve messages from {} bytes", total_size);
                 match json::JsonParser::parse(read_slice) {
-                    Err(e) => Poll::Ready(Some(Err(e))),
+                    Err(e) => {
+                        *this.complete = true;
+                        Poll::Ready(Some(Err(e)))
+                    }
                     Ok((rem, msgs)) => {
                         debug!("Collected {} eve messages", msgs.len());
+
+                        *this.last_offset = rem.len();
+
                         let bytes_parsed = total_size - rem.len();
                         let mut to_keep = this.buf.split_off(bytes_parsed);
                         std::mem::swap(this.buf, &mut to_keep);
-
-                        *this.last_offset = 0;
+                        this.buf.reserve(BUFFER_SIZE - *this.last_offset);
 
                         let msgs: Result<Vec<_>, _> = msgs
                             .iter()
@@ -97,6 +112,7 @@ impl<T> From<smol::Async<std::os::unix::net::UnixStream>> for EveReader<T> {
             buf: Vec::with_capacity(BUFFER_SIZE),
             last_offset: 0,
             marker: std::marker::PhantomData,
+            complete: false,
         }
     }
 }
