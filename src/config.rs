@@ -5,6 +5,40 @@ use log::debug;
 use std::io::Write;
 use std::path::PathBuf;
 
+#[derive(Clone, Debug)]
+pub enum ReaderMessageType {
+    Alert,
+    Dns,
+    Flow,
+    Http,
+    Smtp,
+    Stats,
+    Tls,
+}
+
+pub struct UdsListener {
+    pub listener: std::os::unix::net::UnixListener,
+    pub path: std::path::PathBuf,
+}
+
+pub enum Listener {
+    External,
+    Redis,
+    Uds(UdsListener),
+}
+
+pub struct Reader {
+    eve: EveConfiguration,
+    pub message: ReaderMessageType,
+    pub listener: Listener,
+}
+
+impl Reader {
+    pub fn message(&self) -> &ReaderMessageType {
+        &self.message
+    }
+}
+
 pub struct InternalIps(Vec<String>);
 
 impl InternalIps {
@@ -21,24 +55,24 @@ impl std::fmt::Display for InternalIps {
     }
 }
 
+pub struct ConfigReader {
+    eve: EveConfiguration,
+    message: ReaderMessageType,
+}
+
 #[derive(Template)]
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
     rules: &'a str,
-    eve: &'a EveConfiguration,
+    readers: Vec<ConfigReader>,
     community_id: &'a str,
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
-    stats: &'a str,
-    flows: bool,
-    http: bool,
-    dns: bool,
-    tls: bool,
-    smtp: bool,
     max_pending_packets: &'a str,
 }
 
 /// Configuration options for redis output
+#[derive(Clone)]
 pub struct Redis {
     pub server: String,
     pub port: u16,
@@ -54,6 +88,7 @@ impl Default for Redis {
 }
 
 /// Configuration options for Alert socket
+#[derive(Clone)]
 pub struct Uds {
     pub path: PathBuf,
     pub external_listener: bool,
@@ -62,13 +97,14 @@ pub struct Uds {
 impl Default for Uds {
     fn default() -> Self {
         Self {
-            path: PathBuf::from("/tmp/suricata.alerts"),
+            path: PathBuf::from("/tmp"),
             external_listener: false,
         }
     }
 }
 
 /// Eve configuration
+#[derive(Clone)]
 pub enum EveConfiguration {
     Redis(Redis),
     Uds(Uds),
@@ -161,30 +197,95 @@ impl Default for Config {
     }
 }
 
+fn uds_to_reader(uds: &Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
+    let path = uds.path.join(format!("{:?}.socket", mt));
+    let listener = if !uds.external_listener {
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(Error::from)?;
+        }
+        debug!("Listening to {:?} for event type {:?}", path, mt);
+        let listener = std::os::unix::net::UnixListener::bind(path.clone()).map_err(Error::from)?;
+        Listener::Uds(UdsListener {
+            listener: listener,
+            path: path.clone(),
+        })
+    } else {
+        Listener::External
+    };
+    let mut uds = uds.clone();
+    uds.path = path;
+    Ok(Reader {
+        eve: EveConfiguration::Uds(uds),
+        listener: listener,
+        message: mt,
+    })
+}
+
 impl Config {
-    pub fn materialize(&self) -> Result<(), Error> {
+    pub fn readers(&self) -> Result<Vec<Reader>, Error> {
+        let mut message_types = vec![ReaderMessageType::Alert];
+        if self.enable_dns {
+            message_types.push(ReaderMessageType::Dns);
+        }
+        if self.enable_flows {
+            message_types.push(ReaderMessageType::Flow);
+        }
+        if self.enable_http {
+            message_types.push(ReaderMessageType::Http);
+        }
+        if self.enable_smtp {
+            message_types.push(ReaderMessageType::Smtp);
+        }
+        if self.enable_stats {
+            message_types.push(ReaderMessageType::Stats);
+        }
+        if self.enable_tls {
+            message_types.push(ReaderMessageType::Tls);
+        }
+
+        let res: Result<Vec<_>, Error> = message_types
+            .into_iter()
+            .map(|mt| {
+                if let EveConfiguration::Uds(uds) = &self.eve {
+                    uds_to_reader(uds, mt)
+                } else {
+                    Ok(Reader {
+                        eve: self.eve.clone(),
+                        message: mt,
+                        listener: Listener::Redis,
+                    })
+                }
+            })
+            .collect();
+
+        res
+    }
+
+    pub fn materialize<'a, T>(&'a self, readers: T) -> Result<(), Error>
+    where
+        T: Iterator<Item = &'a Reader> + 'a,
+    {
         let rules = self.rule_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
-        let stats = if self.enable_stats { "yes" } else { "no" };
         let community_id = if self.enable_community_id {
             "yes"
         } else {
             "no"
         };
         let max_pending_packets = format!("{}", self.max_pending_packets);
+        let readers = readers
+            .map(|r| ConfigReader {
+                eve: r.eve.clone(),
+                message: r.message.clone(),
+            })
+            .collect();
         let template = ConfigTemplate {
             rules: &rules,
-            eve: &self.eve,
+            readers: readers,
             community_id: &community_id,
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
-            stats: &stats,
-            flows: self.enable_flows,
-            http: self.enable_http,
-            dns: self.enable_dns,
-            smtp: self.enable_smtp,
-            tls: self.enable_tls,
             max_pending_packets: &max_pending_packets,
         };
         debug!("Attempting to render");

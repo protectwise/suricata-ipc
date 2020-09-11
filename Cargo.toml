@@ -12,7 +12,7 @@ categories=["encoding","network-programming","parsing"]
 exclude = ["resources/*.pcap"]
 
 [dependencies]
-askama = "0.8"
+askama = "0.10"
 chrono = "0.4"
 futures = "0.3"
 lazy_static = "1.4"

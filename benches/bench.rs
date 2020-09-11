@@ -8,7 +8,6 @@ use suricata_ipc::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
-const ALERT_SOCKET: &'static str = "suricata.alerts";
 
 struct WrapperPacket<'a> {
     inner: &'a net_parser_rs::PcapRecord<'a>,
@@ -47,16 +46,16 @@ async fn run_ids<T: AsRef<Path>>(
         .materialize_rules(rules.clone())
         .expect("Failed to materialize rules");
 
-    let alert_path = temp_file.join(ALERT_SOCKET);
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
     let mut ids_args = Config::default();
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.eve = EveConfiguration::uds(alert_path);
+    ids_args.eve = EveConfiguration::uds(temp_file);
     ids_args.rule_path = rules;
     let mut ids = Ids::new(ids_args).await.expect("failed to create ids");
 
-    let ids_messages = ids.take_messages().expect("No alerts");
+    let ids_messages = ids.take_readers();
+    let ids_messages = futures::stream::select_all(ids_messages.into_iter());
 
     let mut f = File::open(pcap_path).expect("Could not open pcap");
     let mut packet_bytes = vec![];
