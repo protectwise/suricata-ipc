@@ -83,7 +83,6 @@ RUN sh autogen.sh \
   && make \
   && make install \
   && make install-conf \
-  && cp $BUILD_DIR
   && rm -rf $BUILD_DIR/suricata
 
 RUN /usr/bin/suricata -V
@@ -92,7 +91,11 @@ ENV SURICATA_EXE=/usr/bin/suricata
 
 FROM suricata-setup AS development
 
-ENV RUST_LOG=suricata_rs=debug
+ENV RUST_LOG=suricata_rs=debug \
+    SURICATA_EXE=/usr/bin/suricata \
+    SURICATA_CONFIG_DIR=/usr/etc/suricata \
+    SURICATA_LOG_DIR=/tmp \
+    SC_LOG_LEVEL=info
 
 WORKDIR /development
 
@@ -114,6 +117,8 @@ ENV RUST_VERSION=beta
 RUN cargo +$RUST_VERSION fmt --all -- --check
 
 RUN cargo build --release --manifest-path=Cargo.toml
+
+RUN mkdir /tmp
 
 ENTRYPOINT [ "cargo"]
 CMD ["test", "--release", "--manifest-path=Cargo.toml"]

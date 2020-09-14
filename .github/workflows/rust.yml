@@ -69,4 +69,4 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: RUST_LOG=debug SURICATA_EXE=/usr/local/bin/suricata SURICATA_CONFIG_DIR=/usr/local/etc/suricata SURICATA_LOG_DIR=/tmp SC_LOG_LEVEL=info cargo test --package suricata-ipc --verbose
