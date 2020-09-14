@@ -10,6 +10,7 @@ pub struct Http {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct HttpInfo {
+    #[serde(default)]
     pub hostname: String,
     pub url: String,
     pub http_user_agent: String,
