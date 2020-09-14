@@ -3,7 +3,7 @@
 //! Provide access to suricata via a library-like interface. Allows packets to be sent to suricata
 //! and alerts received.
 //!
-//! ```rust,norun
+//! ```rust,no_run
 //! # use suricata_ipc::prelude::*;
 //! # use futures::TryStreamExt;
 //! # use std::path::PathBuf;
@@ -32,21 +32,22 @@
 //!
 //!     smol::run(async move {
 //!         let mut ids = Ids::new(config).await.expect("Failed to create ids");
-//!         let ids_alerts = ids.take_messages().expect("No alerts");
+//!         let readers: Vec<EveReader<EveMessage>> = ids.take_readers();
+//!         let readers = futures::stream::select_all(readers.into_iter());
 //!
 //!         let packets: Vec<Packet> = vec![];
 //!         ids.send(packets.as_slice()).expect("Failed to send packets");
 //!
-//!         let alerts: Result<Vec<_>, Error> = ids_alerts.try_collect().await;
-//!         let alerts: Result<Vec<_>, Error> = alerts.expect("Failed to receive alerts")
-//!             .into_iter().flat_map(|v| v).collect();
+//!         let alerts: Result<Vec<_>, Error> = readers.try_collect().await;
 //!         let alerts = alerts.expect("Failed to parse alerts");
 //!
-//!         for eve in alerts {
-//!             println!("Eve={:?}", eve);
-//!             if let Some(intel) = cache.observed(eve) {
-//!                 if let Observed::Alert { rule, message: _, ts: _} = intel {
-//!                     println!("Rule={:?}", rule);
+//!         for eve_msgs in alerts {
+//!             for eve in eve_msgs {
+//!                 println!("Eve={:?}", eve);
+//!                 if let Some(intel) = cache.observed(eve) {
+//!                     if let Observed::Alert { rule, message: _, ts: _} = intel {
+//!                         println!("Rule={:?}", rule);
+//!                     }
 //!                 }
 //!             }
 //!         }

@@ -18,6 +18,14 @@ test:
     3_develop:
       run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name suricata_rs_dev -v `pwd`:/development suricata-rs-test
 
+local-test:
+  piped: true
+  commands:
+    1_build:
+      run: cargo test --no-run
+    2_test:
+      run: RUST_LOG=suricata_ipc:debug SURICATA_CONFIG_DIR=/usr/local/etc/suricata SURICATA_EXE=/usr/local/bin/suricata cargo test
+
 format:
   piped: true
   commands:

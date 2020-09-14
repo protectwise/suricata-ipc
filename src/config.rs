@@ -16,6 +16,20 @@ pub enum ReaderMessageType {
     Tls,
 }
 
+impl std::fmt::Display for ReaderMessageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Alert => write!(f, "Alert"),
+            Self::Dns => write!(f, "Dns"),
+            Self::Flow => write!(f, "Flow"),
+            Self::Http(_) => write!(f, "Http"),
+            Self::Smtp => write!(f, "Smtp"),
+            Self::Stats => write!(f, "Stats"),
+            Self::Tls => write!(f, "Tls"),
+        }
+    }
+}
+
 pub struct UdsListener {
     pub listener: std::os::unix::net::UnixListener,
     pub path: std::path::PathBuf,
@@ -225,7 +239,7 @@ impl Default for Config {
 }
 
 fn uds_to_reader(uds: &Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
-    let path = uds.path.join(format!("{:?}.socket", mt));
+    let path = uds.path.join(format!("{}.socket", mt));
     let listener = if !uds.external_listener {
         if path.exists() {
             std::fs::remove_file(&path).map_err(Error::from)?;
