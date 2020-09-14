@@ -106,10 +106,9 @@ pub mod proto {
 use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
-use std::path::PathBuf;
 
 pub struct Ids<'a, T> {
-    reader: Option<EveReader<T>>,
+    readers: Vec<EveReader<T>>,
     process: Option<IdsProcess>,
     ipc_server: packet_ipc::ConnectedIpc<'a>,
 }
@@ -119,20 +118,12 @@ unsafe impl<'a, T> Sync for Ids<'a, T> {}
 
 pub struct IdsProcess {
     pub inner: std::process::Child,
-    alert_path: Option<PathBuf>,
 }
 
 impl Drop for IdsProcess {
     fn drop(&mut self) {
         if let Err(e) = self.inner.kill() {
             error!("Failed to stop suricata process: {:?}", e);
-        }
-        if let Some(path) = self.alert_path.take() {
-            if path.exists() {
-                if let Err(e) = std::fs::remove_file(&path) {
-                    error!("Failed to remove alert socket: {:?}", e);
-                }
-            }
         }
     }
 }
@@ -148,8 +139,8 @@ impl<'a, M> Ids<'a, M> {
         self.ipc_server.close().map_err(Error::PacketIpc)
     }
 
-    pub fn take_messages(&mut self) -> Option<EveReader<M>> {
-        self.reader.take()
+    pub fn take_readers(&mut self) -> Vec<EveReader<M>> {
+        std::mem::replace(&mut self.readers, vec![])
     }
 
     pub fn reload_rules(&self) -> bool {
@@ -160,38 +151,49 @@ impl<'a, M> Ids<'a, M> {
         }
     }
 
-    pub async fn new(args: Config) -> Result<Ids<'a, M>, Error> {
+    pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
+    where
+        M: Send + 'static,
+    {
         //need a one shot server name to give to suricata
         let server = packet_ipc::Server::new().map_err(Error::from)?;
         let server_name = server.name().clone();
 
-        let listener_and_path = if let EveConfiguration::Uds(uds) = &args.eve {
-            if uds.external_listener {
-                None
-            } else {
-                if uds.path.exists() {
-                    std::fs::remove_file(&uds.path).map_err(Error::from)?;
+        let readers = args.readers()?;
+
+        args.materialize(readers.iter())?;
+
+        let future_connections: Result<Vec<_>, Error> = readers
+            .into_iter()
+            .flat_map(|r| {
+                if let crate::config::Listener::Uds(l) = r.listener {
+                    let message = r.message;
+                    let path = l.path;
+                    debug!(
+                        "Spawning acceptor for uds connection from suricata for {:?}",
+                        path
+                    );
+                    match smol::Async::new(l.listener).map_err(Error::from) {
+                        Err(e) => Some(Err(e)),
+                        Ok(listener) => {
+                            let f = smol::Task::spawn(async move {
+                                listener.accept().await.map_err(Error::from).map(|t| {
+                                    let (uds_connection, uds_addr) = t;
+
+                                    debug!("UDS connection formed from {:?}", uds_addr);
+
+                                    EveReader::new(path, message, uds_connection)
+                                })
+                            });
+                            Some(Ok(f))
+                        }
+                    }
+                } else {
+                    None
                 }
-                let listener = std::os::unix::net::UnixListener::bind(uds.path.clone())
-                    .map_err(Error::from)?;
-                Some((listener, uds.path.clone()))
-            }
-        } else {
-            None
-        };
-
-        args.materialize()?;
-
-        let (future_connection, path) = if let Some((uds_listener, path)) = listener_and_path {
-            debug!("Spawning acceptor for uds connection from suricata");
-
-            let listener = smol::Async::new(uds_listener).map_err(Error::from)?;
-            let f = smol::Task::spawn(async move { listener.accept().await });
-
-            (Some(f), Some(path))
-        } else {
-            (None, None)
-        };
+            })
+            .collect();
+        let future_connections = future_connections?;
 
         let ipc = format!("--ipc={}", server_name);
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
@@ -249,22 +251,12 @@ impl<'a, M> Ids<'a, M> {
 
         debug!("IPC Connection formed");
 
-        let opt_reader = if let Some(f) = future_connection {
-            let (uds_connection, uds_addr) = f.await?;
-
-            debug!("UDS connection formed from {:?}", uds_addr);
-
-            Some(uds_connection.into())
-        } else {
-            None
-        };
+        let readers = futures::future::join_all(future_connections.into_iter()).await;
+        let readers: Result<Vec<_>, Error> = readers.into_iter().collect();
 
         Ok(Ids {
-            reader: opt_reader,
-            process: Some(IdsProcess {
-                inner: process,
-                alert_path: path,
-            }),
+            readers: readers?,
+            process: Some(IdsProcess { inner: process }),
             ipc_server: connected_ipc,
         })
     }

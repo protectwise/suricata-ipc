@@ -12,7 +12,6 @@ use suricata_ipc::prelude::*;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
-const ALERT_SOCKET: &'static str = "suricata.alerts";
 
 fn prepare_executor() {
     for _ in 0..5 {
@@ -163,7 +162,7 @@ async fn send_packets_from_file<'a, T>(
 async fn run_ids<'a, M, T: TestRunner>(runner: T) -> Result<TestResult<M>, Error>
 where
     T: TestRunner,
-    M: for<'de> serde::Deserialize<'de>,
+    M: Send + for<'de> serde::Deserialize<'de> + 'static,
 {
     let mut runner = runner;
 
@@ -179,7 +178,6 @@ where
     let rules = temp_file.join(CUSTOM_RULES);
     cache.materialize_rules(rules.clone())?;
 
-    let alert_path = temp_file.join(ALERT_SOCKET);
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
     let mut ids_args = Config::default();
@@ -188,7 +186,7 @@ where
     ids_args.enable_smtp = true;
     ids_args.enable_tls = true;
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.eve = EveConfiguration::uds(alert_path);
+    ids_args.eve = EveConfiguration::uds(temp_file);
     ids_args.rule_path = rules;
     ids_args.exe_path =
         PathBuf::from(std::env::var("SURICATA_EXE").unwrap_or("/usr/bin/suricata".to_owned()));
@@ -196,7 +194,8 @@ where
         PathBuf::from(std::env::var("SURICATA_CONFIG_DIR").unwrap_or("/etc/suricata".to_owned()));
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
-    let mut ids_messages = ids.take_messages().expect("No alerts");
+    let ids_messages = ids.take_readers();
+    let mut ids_messages = futures::stream::select_all(ids_messages.into_iter());
 
     let packets_sent = runner.run(&mut ids).await;
 

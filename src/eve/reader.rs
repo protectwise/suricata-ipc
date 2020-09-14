@@ -1,9 +1,11 @@
 use crate::errors::Error;
 use crate::eve::json;
 
+use crate::config::ReaderMessageType;
 use futures::{AsyncRead, Stream};
 use log::*;
 use pin_project::pin_project;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -13,12 +15,28 @@ type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
 
 #[pin_project]
 pub struct EveReader<T> {
+    path: PathBuf,
+    message_type: ReaderMessageType,
     #[pin]
     inner: AsyncStream,
     buf: Vec<u8>,
     last_offset: usize,
     marker: std::marker::PhantomData<T>,
     complete: bool,
+}
+
+impl<T> EveReader<T> {
+    pub fn new(path: PathBuf, message_type: ReaderMessageType, v: AsyncStream) -> Self {
+        Self {
+            path: path,
+            message_type: message_type,
+            inner: v,
+            buf: Vec::with_capacity(BUFFER_SIZE),
+            last_offset: 0,
+            marker: std::marker::PhantomData,
+            complete: false,
+        }
+    }
 }
 
 impl<T> Stream for EveReader<T>
@@ -96,33 +114,11 @@ where
     }
 }
 
-impl<T> std::convert::TryFrom<std::os::unix::net::UnixStream> for EveReader<T> {
-    type Error = Error;
-    fn try_from(v: std::os::unix::net::UnixStream) -> Result<Self, Error> {
-        v.set_nonblocking(true)?;
-        let s = smol::Async::new(v).map_err(Error::from)?;
-        Ok(EveReader::from(s))
-    }
-}
-
-impl<T> From<smol::Async<std::os::unix::net::UnixStream>> for EveReader<T> {
-    fn from(v: smol::Async<std::os::unix::net::UnixStream>) -> Self {
-        Self {
-            inner: v,
-            buf: Vec::with_capacity(BUFFER_SIZE),
-            last_offset: 0,
-            marker: std::marker::PhantomData,
-            complete: false,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::prelude::EveMessage;
     use futures::{AsyncWriteExt, TryStreamExt};
-    use std::convert::TryFrom;
 
     #[test]
     fn reads_eve() {
@@ -143,8 +139,10 @@ mod tests {
 
         smol::Task::spawn(send_complete).detach();
 
-        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
-            smol::run(EveReader::try_from(client).unwrap().try_collect());
+        let client = smol::Async::new(client).unwrap();
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::run(
+            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+        );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 2);
@@ -177,8 +175,10 @@ mod tests {
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
-            smol::run(EveReader::try_from(client).unwrap().try_collect());
+        let client = smol::Async::new(client).unwrap();
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::run(
+            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+        );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 2);
@@ -205,8 +205,10 @@ mod tests {
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
-            smol::run(EveReader::try_from(client).unwrap().try_collect());
+        let client = smol::Async::new(client).unwrap();
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::run(
+            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+        );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 1);
@@ -237,8 +239,10 @@ mod tests {
 
         info!("Waiting for alerts");
 
-        let alerts: Result<Vec<Vec<EveMessage>>, Error> =
-            smol::run(EveReader::try_from(client).unwrap().try_collect());
+        let client = smol::Async::new(client).unwrap();
+        let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::run(
+            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+        );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
         assert_eq!(alerts.len(), 2);
