@@ -10,7 +10,7 @@ pub enum ReaderMessageType {
     Alert,
     Dns,
     Flow,
-    Http,
+    Http(HttpConfig),
     Smtp,
     Stats,
     Tls,
@@ -125,6 +125,30 @@ impl Default for EveConfiguration {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum DumpAllHeaders {
+    Both,
+    Request,
+    Response,
+}
+
+#[derive(Clone, Debug)]
+pub struct HttpConfig {
+    pub extended: bool,
+    pub custom: Vec<String>,
+    pub dump_all_headers: Option<DumpAllHeaders>,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            extended: false,
+            custom: vec![],
+            dump_all_headers: Some(DumpAllHeaders::Both),
+        }
+    }
+}
+
 /// Configuration options for suricata
 pub struct Config {
     /// Whether statistics should be enabled (output) for suricata, defaults to true
@@ -133,6 +157,8 @@ pub struct Config {
     pub enable_flows: bool,
     /// Whether http should be enabled (output) for suricata, defaults to false
     pub enable_http: bool,
+    /// Additional http configuration options
+    pub http_config: HttpConfig,
     /// Whether dns should be enabled (output) for suricata, defaults to false
     pub enable_dns: bool,
     /// Whether smtp should be enabled (output) for suricata, defaults to false
@@ -165,6 +191,7 @@ impl Default for Config {
             enable_dns: false,
             enable_smtp: false,
             enable_http: false,
+            http_config: HttpConfig::default(),
             enable_tls: false,
             enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
@@ -231,7 +258,7 @@ impl Config {
             message_types.push(ReaderMessageType::Flow);
         }
         if self.enable_http {
-            message_types.push(ReaderMessageType::Http);
+            message_types.push(ReaderMessageType::Http(self.http_config.clone()));
         }
         if self.enable_smtp {
             message_types.push(ReaderMessageType::Smtp);
@@ -243,7 +270,7 @@ impl Config {
             message_types.push(ReaderMessageType::Tls);
         }
 
-        let res: Result<Vec<_>, Error> = message_types
+        message_types
             .into_iter()
             .map(|mt| {
                 if let EveConfiguration::Uds(uds) = &self.eve {
@@ -256,12 +283,10 @@ impl Config {
                     })
                 }
             })
-            .collect();
-
-        res
+            .collect()
     }
 
-    pub fn materialize<'a, T>(&'a self, readers: T) -> Result<(), Error>
+    fn render<'a, T>(&'a self, readers: T) -> Result<String, Error>
     where
         T: Iterator<Item = &'a Reader> + 'a,
     {
@@ -289,7 +314,14 @@ impl Config {
             max_pending_packets: &max_pending_packets,
         };
         debug!("Attempting to render");
-        let rendered = template.render().map_err(Error::from)?;
+        Ok(template.render().map_err(Error::from)?)
+    }
+
+    pub fn materialize<'a, T>(&'a self, readers: T) -> Result<(), Error>
+    where
+        T: Iterator<Item = &'a Reader> + 'a,
+    {
+        let rendered = self.render(readers)?;
         debug!("Writing output.yaml to {:?}", self.materialize_config_to);
         let mut f = std::fs::File::create(&self.materialize_config_to).map_err(Error::Io)?;
         f.write(rendered.as_bytes()).map_err(Error::from)?;
@@ -300,6 +332,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use crate::config::InternalIps;
 
     #[test]
@@ -313,5 +347,156 @@ mod tests {
             "172.16.0.0/12".to_owned(),
         ]);
         assert_eq!(format!("{}", internal_ips), "169.254.0.0/16,192.168.0.0/16,fc00:0:0:0:0:0:0:0/7,127.0.0.1/32,10.0.0.0/8,172.16.0.0/12");
+    }
+
+    fn get_http_section(http_config: HttpConfig) -> String {
+        let cfg = Config {
+            eve: EveConfiguration::Uds(Uds {
+                // Have to set this here or every test but the first fails
+                external_listener: true,
+                ..Uds::default()
+            }),
+            enable_http: true,
+            http_config: http_config,
+            enable_smtp: true,
+            ..Config::default()
+        };
+
+        let readers = cfg.readers().unwrap();
+
+        let rendered = cfg.render(readers.iter()).unwrap();
+
+        // Start w/ - http: (unique within template)
+        let mut http_section: String = rendered
+            .chars()
+            .skip(rendered.find("- http:").unwrap())
+            .collect();
+        // End w/ dns segment start
+        http_section = http_section
+            .chars()
+            .take(http_section.find(" - smtp\n").unwrap())
+            .collect();
+
+        http_section
+    }
+
+    #[test]
+    fn test_default_http() {
+        let rendered = get_http_section(HttpConfig::default());
+
+        assert_eq!(true, rendered.contains("#extended: yes"));
+        assert_eq!(false, rendered.contains(" extended: yes"));
+
+        assert_eq!(
+            true,
+            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
+        );
+        assert_eq!(false, rendered.contains(" custom: ["));
+
+        assert_eq!(true, rendered.contains(" dump-all-headers: both"));
+        assert_eq!(false, rendered.contains("#dump-all-headers: "));
+    }
+
+    #[test]
+    fn test_extended_http() {
+        let rendered = get_http_section(HttpConfig {
+            extended: true,
+            ..HttpConfig::default()
+        });
+
+        assert_eq!(false, rendered.contains("#extended: yes"));
+        assert_eq!(true, rendered.contains(" extended: yes"));
+
+        assert_eq!(
+            true,
+            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
+        );
+        assert_eq!(false, rendered.contains(" custom: ["));
+
+        assert_eq!(true, rendered.contains(" dump-all-headers: both"));
+        assert_eq!(false, rendered.contains("#dump-all-headers: "));
+    }
+
+    #[test]
+    fn test_custom_http() {
+        let rendered = get_http_section(HttpConfig {
+            custom: vec!["Accept-Encoding".to_string(), "Accept-Language".to_string()],
+            ..HttpConfig::default()
+        });
+
+        assert_eq!(true, rendered.contains("#extended: yes"));
+        assert_eq!(false, rendered.contains(" extended: yes"));
+
+        assert_eq!(
+            false,
+            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
+        );
+        assert_eq!(
+            true,
+            rendered.contains(" custom: [Accept-Encoding, Accept-Language]")
+        );
+
+        assert_eq!(true, rendered.contains(" dump-all-headers: both"));
+        assert_eq!(false, rendered.contains("#dump-all-headers: "));
+    }
+
+    #[test]
+    fn test_dump_request_http() {
+        let rendered = get_http_section(HttpConfig {
+            dump_all_headers: Some(DumpAllHeaders::Request),
+            ..HttpConfig::default()
+        });
+
+        assert_eq!(true, rendered.contains("#extended: yes"));
+        assert_eq!(false, rendered.contains(" extended: yes"));
+
+        assert_eq!(
+            true,
+            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
+        );
+        assert_eq!(false, rendered.contains(" custom: ["));
+
+        assert_eq!(true, rendered.contains(" dump-all-headers: request"));
+        assert_eq!(false, rendered.contains("#dump-all-headers: "));
+    }
+
+    #[test]
+    fn test_dump_response_http() {
+        let rendered = get_http_section(HttpConfig {
+            dump_all_headers: Some(DumpAllHeaders::Response),
+            ..HttpConfig::default()
+        });
+
+        assert_eq!(true, rendered.contains("#extended: yes"));
+        assert_eq!(false, rendered.contains(" extended: yes"));
+
+        assert_eq!(
+            true,
+            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
+        );
+        assert_eq!(false, rendered.contains(" custom: ["));
+
+        assert_eq!(true, rendered.contains(" dump-all-headers: response"));
+        assert_eq!(false, rendered.contains("#dump-all-headers: "));
+    }
+
+    #[test]
+    fn test_dump_none_http() {
+        let rendered = get_http_section(HttpConfig {
+            dump_all_headers: None,
+            ..HttpConfig::default()
+        });
+
+        assert_eq!(true, rendered.contains("#extended: yes"));
+        assert_eq!(false, rendered.contains(" extended: yes"));
+
+        assert_eq!(
+            true,
+            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
+        );
+        assert_eq!(false, rendered.contains(" custom: ["));
+
+        assert_eq!(false, rendered.contains(" dump-all-headers:"));
+        assert_eq!(true, rendered.contains("#dump-all-headers: both"));
     }
 }
