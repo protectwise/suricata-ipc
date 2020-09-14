@@ -136,13 +136,16 @@ outputs:
             # set this value to one and only one from {both, request, response}
             # to dump all HTTP headers for every HTTP request and/or response
         {% match http_config.dump_all_headers %}
-        {% when DumpAllHeaders::Both %}
+          {% when Some with (dump_all_headers) %}
+            {% match dump_all_headers %}
+              {% when DumpAllHeaders::Both %}
             dump-all-headers: both
-        {% when DumpAllHeaders::Request %}
+              {% when DumpAllHeaders::Request %}
             dump-all-headers: request
-        {% when DumpAllHeaders::Response %}
+              {% when DumpAllHeaders::Response %}
             dump-all-headers: response
-        {% when DumpAllHeaders::None %}
+            {% endmatch %}
+          {% when None %}
             #dump-all-headers: both
         {% endmatch %}
       {% when ReaderMessageType::Smtp %}

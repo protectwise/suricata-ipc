@@ -130,14 +130,13 @@ pub enum DumpAllHeaders {
     Both,
     Request,
     Response,
-    None,
 }
 
 #[derive(Clone, Debug)]
 pub struct HttpConfig {
     pub extended: bool,
     pub custom: Vec<String>,
-    pub dump_all_headers: DumpAllHeaders,
+    pub dump_all_headers: Option<DumpAllHeaders>,
 }
 
 impl Default for HttpConfig {
@@ -145,7 +144,7 @@ impl Default for HttpConfig {
         Self {
             extended: false,
             custom: vec![],
-            dump_all_headers: DumpAllHeaders::Both,
+            dump_all_headers: Some(DumpAllHeaders::Both),
         }
     }
 }
@@ -444,7 +443,7 @@ mod tests {
     #[test]
     fn test_dump_request_http() {
         let rendered = get_http_section(HttpConfig {
-            dump_all_headers: DumpAllHeaders::Request,
+            dump_all_headers: Some(DumpAllHeaders::Request),
             ..HttpConfig::default()
         });
 
@@ -464,7 +463,7 @@ mod tests {
     #[test]
     fn test_dump_response_http() {
         let rendered = get_http_section(HttpConfig {
-            dump_all_headers: DumpAllHeaders::Response,
+            dump_all_headers: Some(DumpAllHeaders::Response),
             ..HttpConfig::default()
         });
 
@@ -484,7 +483,7 @@ mod tests {
     #[test]
     fn test_dump_none_http() {
         let rendered = get_http_section(HttpConfig {
-            dump_all_headers: DumpAllHeaders::None,
+            dump_all_headers: None,
             ..HttpConfig::default()
         });
 
