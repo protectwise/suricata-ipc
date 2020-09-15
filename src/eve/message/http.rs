@@ -13,6 +13,7 @@ pub struct HttpInfo {
     #[serde(default)]
     pub hostname: String,
     pub url: String,
+    #[serde(default)]
     pub http_user_agent: String,
     #[serde(default)]
     pub http_content_type: String,
