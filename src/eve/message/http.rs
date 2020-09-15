@@ -46,5 +46,6 @@ pub struct HttpInfo {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Header {
     pub name: String,
+    #[serde(default)]
     pub value: String,
 }
