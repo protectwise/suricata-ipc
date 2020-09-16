@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use std::path::PathBuf;
 use suricata_ipc::prelude::*;
 
@@ -5,6 +6,10 @@ use suricata_ipc::prelude::*;
 struct LogIntercept {
     saw_record: std::sync::Arc<std::sync::atomic::AtomicBool>,
     saw_warning: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+lazy_static! {
+    static ref PARSE_FAILURE: regex::Regex = regex::Regex::new(".*Failed to parse rule '#?'.*").unwrap();
 }
 
 impl log::Log for LogIntercept {
@@ -16,7 +21,7 @@ impl log::Log for LogIntercept {
         self.saw_record
             .store(true, std::sync::atomic::Ordering::Relaxed);
         let s = record.args().to_string();
-        if s.contains("Failed to parse rule '#'") {
+        if PARSE_FAILURE.is_match(&s) {
             self.saw_warning
                 .store(true, std::sync::atomic::Ordering::Relaxed);
         }

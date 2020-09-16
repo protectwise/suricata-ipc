@@ -61,7 +61,7 @@ impl Rules {
         let rules: Vec<_> = lines
             .into_iter()
             .flat_map(|l| {
-                if l.starts_with("#") {
+                if l.is_empty() || l.starts_with("#") {
                     None
                 } else {
                     match parse_rule(&l) {

@@ -33,7 +33,9 @@ tonic = { version = "0.2", optional = true }
 async-trait = "0.1"
 criterion = "0.2"
 env_logger = "0.7"
+lazy_static = "1.4"
 net-parser-rs = "0.2"
+regex = "1.3"
 tempfile = "3.0"
 
 [build-dependencies]
