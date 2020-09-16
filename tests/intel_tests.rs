@@ -9,7 +9,8 @@ struct LogIntercept {
 }
 
 lazy_static! {
-    static ref PARSE_FAILURE: regex::Regex = regex::Regex::new(".*Failed to parse rule '#?'.*").unwrap();
+    static ref PARSE_FAILURE: regex::Regex =
+        regex::Regex::new(".*Failed to parse rule '#?'.*").unwrap();
 }
 
 impl log::Log for LogIntercept {
