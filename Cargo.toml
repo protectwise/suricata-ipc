@@ -1,6 +1,6 @@
 [package]
 name = "suricata-ipc"
-version = "0.10.7"
+version = "0.10.8"
 authors = ["dbcfd <bdbrowning2@gmail.com>"]
 edition = "2018"
 description = "Library for sending packets to suricata and receiving output."
