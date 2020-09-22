@@ -164,6 +164,8 @@ impl<'a, M> Ids<'a, M> {
 
         args.materialize(readers.iter())?;
 
+        let opt_size = args.buffer_size.clone();
+
         let future_connections: Result<Vec<_>, Error> = readers
             .into_iter()
             .flat_map(|r| {
@@ -183,7 +185,11 @@ impl<'a, M> Ids<'a, M> {
 
                                     debug!("UDS connection formed from {:?}", uds_addr);
 
-                                    EveReader::new(path, message, uds_connection)
+                                    if let Some(sz) = opt_size {
+                                        EveReader::with_capacity(path, message, uds_connection, sz)
+                                    } else {
+                                        EveReader::new(path, message, uds_connection)
+                                    }
                                 })
                             });
                             Some(Ok(f))

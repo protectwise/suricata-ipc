@@ -195,6 +195,8 @@ pub struct Config {
     pub internal_ips: InternalIps,
     /// Max pending packets before suricata will block on incoming packets
     pub max_pending_packets: u16,
+    /// Adjust uds buffer size
+    pub buffer_size: Option<usize>,
 }
 
 impl Default for Config {
@@ -234,6 +236,7 @@ impl Default for Config {
                 String::from("169.254.0.0/16"),
             ]),
             max_pending_packets: 800,
+            buffer_size: None,
         }
     }
 }

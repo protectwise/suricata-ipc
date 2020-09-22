@@ -27,11 +27,15 @@ pub struct EveReader<T> {
 
 impl<T> EveReader<T> {
     pub fn new(path: PathBuf, message_type: ReaderMessageType, v: AsyncStream) -> Self {
+        EveReader::with_capacity(path, message_type, v, BUFFER_SIZE)
+    }
+
+    pub fn with_capacity(path: PathBuf, message_type: ReaderMessageType, v: AsyncStream, sz: usize) -> Self {
         Self {
             path: path,
             message_type: message_type,
             inner: v,
-            buf: Vec::with_capacity(BUFFER_SIZE),
+            buf: Vec::with_capacity(sz),
             last_offset: 0,
             marker: std::marker::PhantomData,
             complete: false,
