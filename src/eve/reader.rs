@@ -30,7 +30,12 @@ impl<T> EveReader<T> {
         EveReader::with_capacity(path, message_type, v, BUFFER_SIZE)
     }
 
-    pub fn with_capacity(path: PathBuf, message_type: ReaderMessageType, v: AsyncStream, sz: usize) -> Self {
+    pub fn with_capacity(
+        path: PathBuf,
+        message_type: ReaderMessageType,
+        v: AsyncStream,
+        sz: usize,
+    ) -> Self {
         Self {
             path: path,
             message_type: message_type,
