@@ -12,6 +12,7 @@ pub struct Http {
 pub struct HttpInfo {
     #[serde(default)]
     pub hostname: String,
+    #[serde(default)]
     pub url: String,
     #[serde(default)]
     pub http_user_agent: String,
