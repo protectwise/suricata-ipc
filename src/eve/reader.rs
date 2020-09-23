@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-const BUFFER_SIZE: usize = 131_070;
+const DEFAULT_BUFFER_SIZE: usize = 131_070;
 
 type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
 
@@ -20,6 +20,7 @@ pub struct EveReader<T> {
     #[pin]
     inner: AsyncStream,
     buf: Vec<u8>,
+    buffer_size: usize,
     last_offset: usize,
     marker: std::marker::PhantomData<T>,
     complete: bool,
@@ -27,7 +28,7 @@ pub struct EveReader<T> {
 
 impl<T> EveReader<T> {
     pub fn new(path: PathBuf, message_type: ReaderMessageType, v: AsyncStream) -> Self {
-        EveReader::with_capacity(path, message_type, v, BUFFER_SIZE)
+        EveReader::with_capacity(path, message_type, v, DEFAULT_BUFFER_SIZE)
     }
 
     pub fn with_capacity(
@@ -44,6 +45,7 @@ impl<T> EveReader<T> {
             last_offset: 0,
             marker: std::marker::PhantomData,
             complete: false,
+            buffer_size: sz,
         }
     }
 }
@@ -62,9 +64,9 @@ where
         }
 
         let last_offset = *this.last_offset;
-        if this.buf.len() != BUFFER_SIZE {
+        if this.buf.len() != *this.buffer_size {
             this.buf
-                .resize_with(BUFFER_SIZE - last_offset, Default::default);
+                .resize_with(*this.buffer_size - last_offset, Default::default);
         }
         match futures::ready!(this
             .inner
@@ -100,7 +102,7 @@ where
                         let bytes_parsed = total_size - rem.len();
                         let mut to_keep = this.buf.split_off(bytes_parsed);
                         std::mem::swap(this.buf, &mut to_keep);
-                        this.buf.reserve(BUFFER_SIZE - *this.last_offset);
+                        this.buf.reserve(*this.buffer_size - *this.last_offset);
 
                         let msgs: Result<Vec<_>, _> = msgs
                             .iter()
