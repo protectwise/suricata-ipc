@@ -83,6 +83,7 @@ struct ConfigTemplate<'a> {
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
     max_pending_packets: &'a str,
+    live: bool,
 }
 
 /// Configuration options for redis output
@@ -197,6 +198,10 @@ pub struct Config {
     pub max_pending_packets: u16,
     /// Adjust uds buffer size
     pub buffer_size: Option<usize>,
+    /// Whether we should use live or offline mode in suricata. Live will use system time for
+    /// time related activites in suricata like flow expiration, while offline mode uses packet
+    /// time per thread
+    pub live: bool,
 }
 
 impl Default for Config {
@@ -237,6 +242,7 @@ impl Default for Config {
             ]),
             max_pending_packets: 800,
             buffer_size: None,
+            live: true,
         }
     }
 }
@@ -329,6 +335,7 @@ impl Config {
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
             max_pending_packets: &max_pending_packets,
+            live: self.live,
         };
         debug!("Attempting to render");
         Ok(template.render().map_err(Error::from)?)

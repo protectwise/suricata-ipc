@@ -1119,6 +1119,9 @@ classification-file: {{ suricata_config_path }}/classification.config
 reference-config-file: {{ suricata_config_path }}/reference.config
 # threshold-file: {{ suricata_config_path }}/threshold.config
 
+ipc:
+  live: {{ live }}
+
 ##
 ## Include other configs
 ##
