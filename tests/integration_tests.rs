@@ -192,6 +192,7 @@ where
         PathBuf::from(std::env::var("SURICATA_EXE").unwrap_or("/usr/bin/suricata".to_owned()));
     ids_args.suriata_config_path =
         PathBuf::from(std::env::var("SURICATA_CONFIG_DIR").unwrap_or("/etc/suricata".to_owned()));
+    ids_args.live = false;
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
     let ids_messages = ids.take_readers();
