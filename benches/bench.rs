@@ -108,7 +108,7 @@ fn bench_ids_process_4sics(c: &mut Criterion) {
         b.iter(|| {
             let f = run_ids(pcap_path.clone(), 50000);
 
-            let (packets_sent, messages) = smol::run(f).expect("Failed to run");
+            let (packets_sent, messages) = smol::block_on(f).expect("Failed to run");
 
             assert!(packets_sent >= 50000);
             assert!(messages.len() > 0);

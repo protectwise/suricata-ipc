@@ -30,7 +30,7 @@
 //!     let cache: IntelCache<Rule> = rules.into();
 //!     cache.materialize_rules(config.rule_path.clone()).expect("Failed to materialize rules");
 //!
-//!     smol::run(async move {
+//!     smol::block_on(async move {
 //!         let mut ids = Ids::new(config).await.expect("Failed to create ids");
 //!         let readers: Vec<EveReader<EveMessage>> = ids.take_readers();
 //!         let readers = futures::stream::select_all(readers.into_iter());
@@ -179,7 +179,7 @@ impl<'a, M> Ids<'a, M> {
                     match smol::Async::new(l.listener).map_err(Error::from) {
                         Err(e) => Some(Err(e)),
                         Ok(listener) => {
-                            let f = smol::Task::spawn(async move {
+                            let f = smol::spawn(async move {
                                 listener.accept().await.map_err(Error::from).map(|t| {
                                     let (uds_connection, uds_addr) = t;
 
@@ -252,9 +252,9 @@ impl<'a, M> Ids<'a, M> {
         .fuse()
         .boxed();
 
-        smol::Task::spawn(lines).detach();
+        smol::spawn(lines).detach();
 
-        let connected_ipc = smol::Task::blocking(async move { server.accept() }).await?;
+        let connected_ipc = smol::block_on(async move { server.accept() })?;
 
         debug!("IPC Connection formed");
 

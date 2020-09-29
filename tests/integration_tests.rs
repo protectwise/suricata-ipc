@@ -14,10 +14,7 @@ const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
 
 fn prepare_executor() {
-    for _ in 0..5 {
-        // A pending future is one that simply yields forever.
-        std::thread::spawn(|| smol::run(futures::future::pending::<()>()));
-    }
+    std::env::set_var("SMOL_THREADS", "5");
 }
 
 struct WrapperPacket<'a> {
