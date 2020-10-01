@@ -185,10 +185,6 @@ where
     ids_args.materialize_config_to = suricata_yaml;
     ids_args.eve = EveConfiguration::uds(temp_file);
     ids_args.rule_path = rules;
-    ids_args.exe_path =
-        PathBuf::from(std::env::var("SURICATA_EXE").unwrap_or("/usr/bin/suricata".to_owned()));
-    ids_args.suriata_config_path =
-        PathBuf::from(std::env::var("SURICATA_CONFIG_DIR").unwrap_or("/etc/suricata".to_owned()));
     ids_args.live = false;
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 

@@ -205,7 +205,12 @@ impl<'a, M> Ids<'a, M> {
         let ipc = format!("--ipc={}", server_name);
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         command
-            .args(&["-c", args.materialize_config_to.to_str().unwrap(), &ipc])
+            .args(&[
+                "-c",
+                args.materialize_config_to.to_str().unwrap(),
+                "i",
+                &ipc,
+            ])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped());

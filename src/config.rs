@@ -84,6 +84,7 @@ struct ConfigTemplate<'a> {
     internal_ips: &'a InternalIps,
     max_pending_packets: &'a str,
     live: bool,
+    default_log_dir: &'a str,
 }
 
 /// Configuration options for redis output
@@ -191,7 +192,7 @@ pub struct Config {
     /// Path where the rules reside at
     pub rule_path: PathBuf,
     /// Path where suricata config resides at (e.g. threshold config)
-    pub suriata_config_path: PathBuf,
+    pub suricata_config_path: PathBuf,
     /// Internal ips to use for HOME_NET
     pub internal_ips: InternalIps,
     /// Max pending packets before suricata will block on incoming packets
@@ -202,6 +203,8 @@ pub struct Config {
     /// time related activites in suricata like flow expiration, while offline mode uses packet
     /// time per thread
     pub live: bool,
+    /// Directory to use for suricata logging
+    pub default_log_dir: PathBuf,
 }
 
 impl Default for Config {
@@ -225,7 +228,7 @@ impl Default for Config {
             },
             eve: EveConfiguration::default(),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
-            suriata_config_path: {
+            suricata_config_path: {
                 if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
                     e
                 } else {
@@ -243,6 +246,13 @@ impl Default for Config {
             max_pending_packets: 800,
             buffer_size: None,
             live: true,
+            default_log_dir: {
+                if let Some(e) = std::env::var_os("SURICATA_LOG_DIR").map(|s| PathBuf::from(s)) {
+                    e
+                } else {
+                    PathBuf::from("/var/log/suricata")
+                }
+            },
         }
     }
 }
@@ -314,7 +324,8 @@ impl Config {
         T: Iterator<Item = &'a Reader> + 'a,
     {
         let rules = self.rule_path.to_string_lossy().to_owned();
-        let suricata_config_path = self.suriata_config_path.to_string_lossy().to_owned();
+        let suricata_config_path = self.suricata_config_path.to_string_lossy().to_owned();
+        let default_log_dir = self.default_log_dir.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
         let community_id = if self.enable_community_id {
             "yes"
@@ -336,6 +347,7 @@ impl Config {
             internal_ips: internal_ips,
             max_pending_packets: &max_pending_packets,
             live: self.live,
+            default_log_dir: &default_log_dir,
         };
         debug!("Attempting to render");
         Ok(template.render().map_err(Error::from)?)
