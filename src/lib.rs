@@ -67,7 +67,7 @@ pub mod prelude {
     pub use super::config::{Config, DumpAllHeaders, EveConfiguration, HttpConfig, Redis, Uds};
     pub use super::errors::Error;
     pub use super::eve::*;
-    pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer};
+    pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer, Observable};
     #[cfg(feature = "protobuf")]
     pub use super::proto;
     pub use super::Ids;
