@@ -215,6 +215,7 @@ impl<'a, M> Ids<'a, M> {
                 })
                 .fuse()
         };
+
         let mut stderr_complete = {
             let o = process.stderr.take().unwrap();
             let pid = process.id();
@@ -243,6 +244,8 @@ impl<'a, M> Ids<'a, M> {
 
         smol::Task::blocking(lines).detach();
 
+        debug!("Logging started");
+
         let connected_ipc = smol::Task::blocking(async move { server.accept() }).await?;
 
         debug!("IPC Connection formed");
@@ -251,7 +254,7 @@ impl<'a, M> Ids<'a, M> {
             debug!("Spawning acceptor for uds connection from suricata");
 
             let listener = smol::Async::new(uds_listener).map_err(Error::from)?;
-            let f = smol::Task::spawn(async move { listener.accept().await });
+            let f = smol::Task::blocking(async move { listener.accept().await });
 
             (Some(f), Some(path))
         } else {
