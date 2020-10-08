@@ -108,6 +108,8 @@ use log::*;
 use prelude::*;
 use std::path::PathBuf;
 
+const READER_BUFFER_SIZE: usize = 128;
+
 pub struct Ids<'a, T> {
     reader: Option<EveReader<T>>,
     process: Option<IdsProcess>,
@@ -204,7 +206,7 @@ impl<'a, M> Ids<'a, M> {
         let mut stdout_complete = {
             let o = process.stdout.take().unwrap();
             let pid = process.id();
-            let reader = futures::io::BufReader::new(smol::Async::new(o).map_err(Error::from)?);
+            let reader = futures::io::BufReader::with_capacity(READER_BUFFER_SIZE, smol::Async::new(o).map_err(Error::from)?);
             reader
                 .lines()
                 .for_each(move |t| {
@@ -219,7 +221,7 @@ impl<'a, M> Ids<'a, M> {
         let mut stderr_complete = {
             let o = process.stderr.take().unwrap();
             let pid = process.id();
-            let reader = futures::io::BufReader::new(smol::Async::new(o).map_err(Error::from)?);
+            let reader = futures::io::BufReader::with_capacity(READER_BUFFER_SIZE, smol::Async::new(o).map_err(Error::from)?);
             reader
                 .lines()
                 .for_each(move |t| {
