@@ -568,8 +568,8 @@ logging:
       enabled: yes
       # type: json
   - file:
-      enabled: no
-      level: info
+      enabled: yes
+      level: debug
       filename: suricata.log
       # type: json
   - syslog:
