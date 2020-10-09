@@ -103,7 +103,7 @@ FROM development AS build-plugin
 #Xenial needs a new version of cmake (3.18.2)
 
 RUN apt-get update -y \
-    && apt-get install apt-transport-https ca-certificates gnupg software-properties-common wget \
+    && apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget \
     && wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null \
     && apt-add-repository 'deb https://apt.kitware.com/ubuntu/ xenial main' \
     && apt-get update -y \
