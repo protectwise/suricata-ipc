@@ -196,6 +196,9 @@ impl<'a, M> Ids<'a, M> {
                 "--capture-plugin=ipc-plugin",
                 "--set",
                 &format!("ipc.server={}", server_name),
+                "--set",
+                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
+
             ])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())

@@ -128,6 +128,8 @@ pub struct Config {
     /// Path to log to, defaults to /var/log/suricata, can be overridden with environment variable
     /// SURICATA_LOG_DIR
     pub log_dir: PathBuf,
+    /// How many packets to wait for before allowing suricata to process
+    pub ipc_allocation_batch: usize,
 }
 
 impl Default for Config {
@@ -180,6 +182,7 @@ impl Default for Config {
                     PathBuf::from("/var/log/suricata")
                 }
             },
+            ipc_allocation_batch: 16,
         }
     }
 }
