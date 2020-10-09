@@ -1879,4 +1879,4 @@ reference-config-file: {{ suricata_config_path }}/reference.config
 # searched for in the same directory as this configuration file. You may
 # use absolute pathnames too.
 # You can specify more than 2 configuration files, if needed.
-include: include1.yaml
+# include: include1.yaml
