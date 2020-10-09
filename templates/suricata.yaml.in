@@ -1622,6 +1622,9 @@ nflog:
 ## Advanced Capture Options
 ##
 
+ipc:
+  allocation-batch = 1
+
 # General settings affecting packet capture
 capture:
   # disable NIC offloading. It's restored when Suricata exits.
