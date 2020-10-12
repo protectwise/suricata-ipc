@@ -568,7 +568,7 @@ logging:
       enabled: yes
       # type: json
   - file:
-      enabled: yes
+      enabled: no
       level: debug
       filename: suricata.log
       # type: json
