@@ -67,7 +67,9 @@ pub mod prelude {
     pub use super::config::{Config, DumpAllHeaders, EveConfiguration, HttpConfig, Redis, Uds};
     pub use super::errors::Error;
     pub use super::eve::*;
-    pub use super::intel::{CachedRule, IdsKey, IntelCache, Observed, Rule, Rules, Tracer, Observable};
+    pub use super::intel::{
+        CachedRule, IdsKey, IntelCache, Observable, Observed, Rule, Rules, Tracer,
+    };
     #[cfg(feature = "protobuf")]
     pub use super::proto;
     pub use super::Ids;
@@ -104,9 +106,10 @@ pub mod proto {
     }
 }
 
-use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
+use futures::{self, FutureExt};
 use log::*;
 use prelude::*;
+use std::io::BufRead;
 
 pub struct Ids<'a, T> {
     readers: Vec<EveReader<T>>,
@@ -217,44 +220,39 @@ impl<'a, M> Ids<'a, M> {
         info!("Spawning {:?}", command);
         let mut process = command.spawn().map_err(Error::Io)?;
 
-        let mut stdout_complete = {
+        let stdout_complete = {
             let o = process.stdout.take().unwrap();
             let pid = process.id();
-            let reader = futures::io::BufReader::new(smol::Async::new(o).map_err(Error::from)?);
-            reader
-                .lines()
-                .for_each(move |t| {
+            smol::unblock(move || {
+                let reader = std::io::BufReader::new(o);
+                reader.lines().for_each(move |t| {
                     if let Ok(l) = t {
                         info!("[Suricata ({})] {}", pid, l);
                     }
-                    futures::future::ready(())
                 })
-                .fuse()
+            })
         };
-        let mut stderr_complete = {
+        let stderr_complete = {
             let o = process.stderr.take().unwrap();
             let pid = process.id();
-            let reader = futures::io::BufReader::new(smol::Async::new(o).map_err(Error::from)?);
-            reader
-                .lines()
-                .for_each(move |t| {
+            smol::unblock(move || {
+                let reader = std::io::BufReader::new(o);
+                reader.lines().for_each(move |t| {
                     if let Ok(l) = t {
                         error!("[Suricata ({})] {}", pid, l);
                     }
-                    futures::future::ready(())
                 })
-                .fuse()
+            })
         };
 
         let lines = async move {
             futures::select! {
-                v = stdout_complete => v,
-                v = stderr_complete => v,
+                v = stdout_complete.fuse() => v,
+                v = stderr_complete.fuse() => v,
             }
 
             info!("Suricata closed");
         }
-        .fuse()
         .boxed();
 
         smol::spawn(lines).detach();
