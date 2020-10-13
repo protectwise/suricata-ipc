@@ -116,10 +116,11 @@ pub struct EveHandle {
     listener: UnixListener,
     path: std::path::PathBuf,
 }
-pub struct IdsInitHandle {
+pub struct IdsInitHandle<'a> {
     uds_handle: Option<EveHandle>,
     output: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
     config: Config,
+    servers: Vec<packet_ipc::Server<'a>>,
 }
 
 impl IdsInitHandle {
@@ -182,10 +183,15 @@ impl<'a, M> Ids<'a, M> {
     /// Since we spawn suricata we also need to bind to the eve socket, so that it is present for suricata to connect to.
     /// For that reason, we pass the socket back as well,
     ///
-    pub async fn init_suricata(args: Config) -> Result<IdsInitHandle, Error> {
+    pub async fn start_suricata(args: Config) -> Result<IdsInitHandle<'a>, Error> {
         //need a one shot server name to give to suricata
-        let server = packet_ipc::Server::new().map_err(Error::from)?;
-        let server_name = server.name().clone();
+
+        let servers: Result<Vec<packet_ipc::Server>, Error> = (0..args.server_count).into_iter().map(|i| {
+             packet_ipc::Server::new().map_err(Error::from)
+        }).collect();
+        let servers = servers?;
+
+
 
         let uds_opt = if let EveConfiguration::Uds(uds) = &args.eve {
             if uds.external_listener {
@@ -208,19 +214,32 @@ impl<'a, M> Ids<'a, M> {
         args.materialize()?;
 
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
-        command
-            .args(&[
-                "-c",
-                args.materialize_config_to.to_str().unwrap(),
-                "--set",
-                &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
-                "--capture-plugin=ipc-plugin",
-                "--set",
-                &format!("ipc.server={}", server_name),
-                "--set",
-                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
 
-            ])
+        let server_args: Vec<String> = {
+            let mut base_args: Vec<String> = vec!["-c",
+            args.materialize_config_to.to_str().unwrap(),
+            "--set",
+            &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
+            "--capture-plugin=ipc-plugin",
+            "--set",
+            &format!("ipc.allocation-batch={}", args.ipc_allocation_batch)]
+                .into_iter()
+                .map(|s|{
+                String::from(s)
+            }).collect();
+
+            let server_args = servers
+                .iter()
+                .flat_map(|s| {
+                    vec!["--set".to_string(), format!("ipc.server={}", s.name())].into_iter()
+                });
+
+            base_args.extend(server_args);
+            base_args
+        };
+
+        command
+            .args(&server_args)
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped());
@@ -271,7 +290,8 @@ impl<'a, M> Ids<'a, M> {
         Ok(IdsInitHandle{
             uds_handle: uds_opt,
             output: Some(lines),
-            config
+            config: args,
+            servers
         })
     }
 
