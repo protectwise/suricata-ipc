@@ -112,18 +112,19 @@ use std::pin::Pin;
 use std::future::Future;
 
 //If using UDS and external_listener = false, this will be present
-pub struct EveHandle {
+pub struct UdsHandle {
     listener: UnixListener,
     path: std::path::PathBuf,
 }
 pub struct IdsInitHandle<'a> {
-    uds_handle: Option<EveHandle>,
+    uds_handle: Option<UdsHandle>,
     output: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
     config: Config,
     servers: Vec<packet_ipc::Server<'a>>,
+    process: std::process::Child,
 }
 
-impl IdsInitHandle {
+impl<'a> IdsInitHandle<'a> {
     pub fn take_output(&mut self) -> Option<Pin<Box<dyn Future<Output = ()> + Send>>> {
         (&mut self.output).take()
     }
@@ -131,7 +132,7 @@ impl IdsInitHandle {
 pub struct Ids<'a, T> {
     reader: Option<EveReader<T>>,
     process: Option<IdsProcess>,
-    ipc_server: packet_ipc::ConnectedIpc<'a>,
+    ipc_servers: Vec<packet_ipc::ConnectedIpc<'a>>,
 }
 
 unsafe impl<'a, T> Send for Ids<'a, T> {}
@@ -159,13 +160,15 @@ impl Drop for IdsProcess {
 
 impl<'a, M> Ids<'a, M> {
     pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
-        let packets_sent = packets.len();
-        self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
-        Ok(packets_sent)
+        unimplemented!()
+        // let packets_sent = packets.len();
+        // self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
+        // Ok(packets_sent)
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        self.ipc_server.close().map_err(Error::PacketIpc)
+        unimplemented!()
+        //self.ipc_server.close().map_err(Error::PacketIpc)
     }
 
     pub fn take_messages(&mut self) -> Option<EveReader<M>> {
@@ -183,15 +186,13 @@ impl<'a, M> Ids<'a, M> {
     /// Since we spawn suricata we also need to bind to the eve socket, so that it is present for suricata to connect to.
     /// For that reason, we pass the socket back as well,
     ///
-    pub async fn start_suricata(args: Config) -> Result<IdsInitHandle<'a>, Error> {
+    pub async fn start_suricata<'b>(args: Config) -> Result<IdsInitHandle<'b>, Error> {
         //need a one shot server name to give to suricata
 
-        let servers: Result<Vec<packet_ipc::Server>, Error> = (0..args.server_count).into_iter().map(|i| {
+        let servers: Result<Vec<packet_ipc::Server<'b>>, Error> = (0..args.server_count).into_iter().map(|i| {
              packet_ipc::Server::new().map_err(Error::from)
         }).collect();
         let servers = servers?;
-
-
 
         let uds_opt = if let EveConfiguration::Uds(uds) = &args.eve {
             if uds.external_listener {
@@ -202,7 +203,7 @@ impl<'a, M> Ids<'a, M> {
                 }
                 let listener: UnixListener = UnixListener::bind(uds.path.clone())
                     .map_err(Error::from)?;
-                Some(EveHandle{
+                Some(UdsHandle {
                     listener: listener,
                     path: uds.path.clone()
                 })
@@ -291,105 +292,31 @@ impl<'a, M> Ids<'a, M> {
             uds_handle: uds_opt,
             output: Some(lines),
             config: args,
-            servers
+            servers,
+            process,
         })
     }
 
     pub async fn new(args: Config) -> Result<Ids<'a, M>, Error> {
-        //need a one shot server name to give to suricata
-        let server = packet_ipc::Server::new().map_err(Error::from)?;
-        let server_name = server.name().clone();
+        let mut init_handler = Self::start_suricata(args).await?;
 
-        let listener_and_path = if let EveConfiguration::Uds(uds) = &args.eve {
-            if uds.external_listener {
-                None
-            } else {
-                if uds.path.exists() {
-                    std::fs::remove_file(&uds.path).map_err(Error::from)?;
-                }
-                let listener = UnixListener::bind(uds.path.clone())
-                    .map_err(Error::from)?;
-                Some((listener, uds.path.clone()))
-            }
-        } else {
-            None
-        };
-
-        args.materialize()?;
-
-        let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
-        command
-            .args(&[
-                "-c",
-                args.materialize_config_to.to_str().unwrap(),
-                "--set",
-                &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
-                "--capture-plugin=ipc-plugin",
-                "--set",
-                &format!("ipc.server={}", server_name),
-                "--set",
-                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
-
-            ])
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped());
-        info!("Spawning {:?}", command);
-        let mut process = command.spawn().map_err(Error::Io)?;
-
-        let mut stdout_complete = {
-            let o = process.stdout.take().unwrap();
-            let pid = process.id();
-            let reader = futures::io::BufReader::new(smol::reader(o));
-            reader
-                .lines()
-                .for_each(move |t| {
-                    if let Ok(l) = t {
-                        debug!("[Suricata ({})] {}", pid, l);
-                    }
-                    futures::future::ready(())
-                })
-                .fuse()
-        };
-
-        let mut stderr_complete = {
-            let o = process.stderr.take().unwrap();
-            let pid = process.id();
-            let reader = futures::io::BufReader::new(smol::reader(o));
-            reader
-                .lines()
-                .for_each(move |t| {
-                    if let Ok(l) = t {
-                        error!("[Suricata ({})] {}", pid, l);
-                    }
-                    futures::future::ready(())
-                })
-                .fuse()
-        };
-
-        let lines = async move {
-            futures::select! {
-                v = stdout_complete => v,
-                v = stderr_complete => v,
-            }
-
-            info!("Suricata closed");
+        if let Some(lines) = (&mut init_handler.output).take() {
+            smol::Task::blocking(lines).detach();
         }
-        .fuse()
-        .boxed();
-
-        //smol::Task::blocking(lines).detach();
 
         debug!("Logging started");
 
-        let connected_ipc = smol::Task::blocking(async move { server.accept() }).await?;
-
+        let mut connected_ipc = vec![];
+        for server in std::mem::take(&mut init_handler.servers) {
+            connected_ipc.push(smol::Task::blocking(async move { server.accept() }).await?)
+        }
+        let connected_ipc = connected_ipc;
         debug!("IPC Connection formed");
 
-        let (future_connection, path) = if let Some((uds_listener, path)) = listener_and_path {
+        let (future_connection, path) = if let Some(UdsHandle{listener, path}) = init_handler.uds_handle {
             debug!("Spawning acceptor for uds connection from suricata");
 
-            let listener = smol::Async::new(uds_listener).map_err(Error::from)?;
+            let listener = smol::Async::new(listener).map_err(Error::from)?;
             let f = smol::Task::blocking(async move { listener.accept().await });
 
             (Some(f), Some(path))
@@ -410,10 +337,10 @@ impl<'a, M> Ids<'a, M> {
         Ok(Ids {
             reader: opt_reader,
             process: Some(IdsProcess {
-                inner: process,
+                inner: init_handler.process,
                 alert_path: path,
             }),
-            ipc_server: connected_ipc,
+            ipc_servers: connected_ipc,
         })
     }
 }
