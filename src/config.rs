@@ -130,6 +130,8 @@ pub struct Config {
     pub log_dir: PathBuf,
     /// How many packets to wait for before allowing suricata to process
     pub ipc_allocation_batch: usize,
+    /// Servers
+    pub server_count: usize,
 }
 
 impl Default for Config {
@@ -183,6 +185,7 @@ impl Default for Config {
                 }
             },
             ipc_allocation_batch: 16,
+            server_count: 1,
         }
     }
 }
