@@ -139,6 +139,8 @@ TmEcode ReceiveIpcLoop(ThreadVars *tv, void *data, void *slot)
             }
         }
 
+        //SCLogDebug("Allocation batch - packets_used %"PRIi64" - %"PRIi64"", ptv->allocation_batch,packets_used);
+
         int64_t packets_available = ptv->allocation_batch - packets_used;
         int64_t packets_received = rs_ipc_populate_packets(ptv->ipc, (SCPacket **)&current_packets[packets_used], packets_available);
 

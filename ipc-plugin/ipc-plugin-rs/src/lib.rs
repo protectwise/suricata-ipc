@@ -50,7 +50,7 @@ pub extern "C" fn rs_ipc_populate_packets(ipc: *mut IpcClient, packets: *mut *mu
         return -1;
     }
 
-    println!("Populating {} packets", len);
+    SCLogDebug!("Populating {} packets", len);
 
     match unsafe { (*ipc).inner.recv(len as usize) } {
         Err(_) => {
@@ -67,7 +67,6 @@ pub extern "C" fn rs_ipc_populate_packets(ipc: *mut IpcClient, packets: *mut *mu
                 return 0;
             } else {
                 SCLogDebug!("Received {} packets", ipc_packets.len());
-                println!("Received {} packets", ipc_packets.len());
                 let packets_returned = ipc_packets.len();
 
                 if packets_returned > len as usize {
