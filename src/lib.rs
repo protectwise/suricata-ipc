@@ -159,16 +159,18 @@ impl Drop for IdsProcess {
 }
 
 impl<'a, M> Ids<'a, M> {
-    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
-        unimplemented!()
-        // let packets_sent = packets.len();
-        // self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
-        // Ok(packets_sent)
+    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, server_id: usize, packets: &'b [T]) -> Result<usize, Error> {
+        let server = self.ipc_servers.get(server_id).ok_or(Error::MissingServer(server_id))?;
+        let packets_sent = packets.len();
+        server.send(packets).map_err(Error::PacketIpc)?;
+        Ok(packets_sent)
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        unimplemented!()
-        //self.ipc_server.close().map_err(Error::PacketIpc)
+        for mut server in self.ipc_servers.iter_mut() {
+            server.close().map_err(Error::PacketIpc)?;
+        }
+        Ok(())
     }
 
     pub fn take_messages(&mut self) -> Option<EveReader<M>> {
@@ -326,9 +328,7 @@ impl<'a, M> Ids<'a, M> {
 
         let opt_reader = if let Some(f) = future_connection {
             let (uds_connection, uds_addr) = f.await?;
-
             debug!("UDS connection formed from {:?}", uds_addr);
-
             Some(uds_connection.into())
         } else {
             None
