@@ -214,7 +214,7 @@ impl<'a, M> Ids<'a, M> {
                 .lines()
                 .for_each(move |t| {
                     if let Ok(l) = t {
-                        info!("[Suricata ({})] {}", pid, l);
+                        debug!("[Suricata ({})] {}", pid, l);
                     }
                     futures::future::ready(())
                 })
