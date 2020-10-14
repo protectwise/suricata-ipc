@@ -106,10 +106,9 @@ pub mod proto {
     }
 }
 
-use futures::{self, FutureExt};
+use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
-use std::io::BufRead;
 
 pub struct Ids<'a, T> {
     readers: Vec<EveReader<T>>,
@@ -223,25 +222,25 @@ impl<'a, M> Ids<'a, M> {
         let stdout_complete = {
             let o = process.stdout.take().unwrap();
             let pid = process.id();
-            smol::unblock(move || {
-                let reader = std::io::BufReader::new(o);
-                reader.lines().for_each(move |t| {
-                    if let Ok(l) = t {
-                        info!("[Suricata ({})] {}", pid, l);
-                    }
-                })
+            let o = smol::Unblock::new(o);
+            let reader = futures::io::BufReader::new(o);
+            reader.lines().for_each(move |t| {
+                if let Ok(l) = t {
+                    debug!("[Suricata ({})] {}", pid, l);
+                }
+                futures::future::ready(())
             })
         };
         let stderr_complete = {
             let o = process.stderr.take().unwrap();
             let pid = process.id();
-            smol::unblock(move || {
-                let reader = std::io::BufReader::new(o);
-                reader.lines().for_each(move |t| {
-                    if let Ok(l) = t {
-                        error!("[Suricata ({})] {}", pid, l);
-                    }
-                })
+            let o = smol::Unblock::new(o);
+            let reader = futures::io::BufReader::new(o);
+            reader.lines().for_each(move |t| {
+                if let Ok(l) = t {
+                    error!("[Suricata ({})] {}", pid, l);
+                }
+                futures::future::ready(())
             })
         };
 
