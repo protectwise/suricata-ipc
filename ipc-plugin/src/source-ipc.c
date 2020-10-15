@@ -67,7 +67,6 @@ static void FreeAllocatedPackets(Packet **packets, int64_t packets_from_pool, in
 
 static void IpcPacketReinit(Packet *p) {
     if(p->reinit_data) {
-        SCLogInfo("Releasing packet");
         rs_ipc_release_packet(p->reinit_data);
     }
     p->reinit_data = NULL;
