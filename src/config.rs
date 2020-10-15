@@ -42,7 +42,7 @@ pub enum Listener {
 }
 
 pub struct Reader {
-    eve: EveConfiguration,
+    pub eve: EveConfiguration,
     pub message: ReaderMessageType,
     pub listener: Listener,
 }
@@ -69,22 +69,48 @@ impl std::fmt::Display for InternalIps {
     }
 }
 
+#[derive(Clone)]
 pub struct ConfigReader {
-    eve: EveConfiguration,
-    message: ReaderMessageType,
+    pub eve: EveConfiguration,
+    pub message: ReaderMessageType,
+}
+
+impl ConfigReader {
+    pub fn create_reader(&self) -> Result<Reader, Error> {
+        match &self.eve {
+            EveConfiguration::Uds(uds) => uds_to_reader(uds.clone(), self.message.clone()),
+            EveConfiguration::Redis(_) => Ok(Reader {
+                eve: self.eve.clone(),
+                message: self.message.clone(),
+                listener: Listener::Redis,
+            }),
+            EveConfiguration::Custom(custom) => {
+                if let Some(uds) = custom.uds.as_ref() {
+                    uds_to_reader(uds.clone(), self.message.clone())
+                } else {
+                    Ok(Reader {
+                        eve: self.eve.clone(),
+                        message: self.message.clone(),
+                        listener: Listener::External,
+                    })
+                }
+            }
+        }
+    }
 }
 
 #[derive(Template)]
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
     rules: &'a str,
-    readers: Vec<ConfigReader>,
+    readers: &'a Vec<ConfigReader>,
     community_id: &'a str,
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
     max_pending_packets: &'a str,
     live: bool,
     default_log_dir: &'a str,
+    plugins: &'a Vec<String>,
 }
 
 /// Configuration options for redis output
@@ -119,11 +145,25 @@ impl Default for Uds {
     }
 }
 
+#[derive(Clone)]
+pub struct CustomOption {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Clone)]
+pub struct Custom {
+    pub name: String,
+    pub options: Vec<CustomOption>,
+    pub uds: Option<Uds>,
+}
+
 /// Eve configuration
 #[derive(Clone)]
 pub enum EveConfiguration {
     Redis(Redis),
     Uds(Uds),
+    Custom(Custom),
 }
 
 impl EveConfiguration {
@@ -205,6 +245,10 @@ pub struct Config {
     pub live: bool,
     /// Directory to use for suricata logging
     pub default_log_dir: PathBuf,
+    /// Readers to use (supercedes enable_* properties, http_config)
+    pub readers: Vec<ConfigReader>,
+    /// Location of plugins to attempt to load
+    pub plugins: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -253,12 +297,14 @@ impl Default for Config {
                     PathBuf::from("/var/log/suricata")
                 }
             },
+            readers: vec![],
+            plugins: vec![],
         }
     }
 }
 
-fn uds_to_reader(uds: &Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
-    let path = uds.path.join(format!("{}.socket", mt));
+fn uds_to_reader(mut uds: Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
+    let path = uds.path;
     let listener = if !uds.external_listener {
         if path.exists() {
             std::fs::remove_file(&path).map_err(Error::from)?;
@@ -272,7 +318,6 @@ fn uds_to_reader(uds: &Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
     } else {
         Listener::External
     };
-    let mut uds = uds.clone();
     uds.path = path;
     Ok(Reader {
         eve: EveConfiguration::Uds(uds),
@@ -282,47 +327,56 @@ fn uds_to_reader(uds: &Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
 }
 
 impl Config {
-    pub fn readers(&self) -> Result<Vec<Reader>, Error> {
-        let mut message_types = vec![ReaderMessageType::Alert];
-        if self.enable_dns {
-            message_types.push(ReaderMessageType::Dns);
-        }
-        if self.enable_flows {
-            message_types.push(ReaderMessageType::Flow);
-        }
-        if self.enable_http {
-            message_types.push(ReaderMessageType::Http(self.http_config.clone()));
-        }
-        if self.enable_smtp {
-            message_types.push(ReaderMessageType::Smtp);
-        }
-        if self.enable_stats {
-            message_types.push(ReaderMessageType::Stats);
-        }
-        if self.enable_tls {
-            message_types.push(ReaderMessageType::Tls);
-        }
+    fn add_if_missing(&self, readers: &mut Vec<ConfigReader>, message_type: ReaderMessageType) {
+        let message_type_discriminant = std::mem::discriminant(&message_type);
+        if readers
+            .iter()
+            .find(|r| std::mem::discriminant(&r.message) == message_type_discriminant)
+            .is_none()
+        {
+            let mut eve = self.eve.clone();
+            if let EveConfiguration::Uds(uds) = &mut eve {
+                uds.path = uds.path.join(format!("{}.socket", message_type));
+            }
 
-        message_types
-            .into_iter()
-            .map(|mt| {
-                if let EveConfiguration::Uds(uds) = &self.eve {
-                    uds_to_reader(uds, mt)
-                } else {
-                    Ok(Reader {
-                        eve: self.eve.clone(),
-                        message: mt,
-                        listener: Listener::Redis,
-                    })
-                }
-            })
-            .collect()
+            readers.push(ConfigReader {
+                eve: eve,
+                message: message_type,
+            });
+        }
     }
 
-    fn render<'a, T>(&'a self, readers: T) -> Result<String, Error>
-    where
-        T: Iterator<Item = &'a Reader> + 'a,
-    {
+    pub fn config_readers(&self) -> Vec<ConfigReader> {
+        let mut readers = self.readers.iter().map(|r| r.clone()).collect();
+
+        self.add_if_missing(&mut readers, ReaderMessageType::Alert);
+
+        if self.enable_dns {
+            self.add_if_missing(&mut readers, ReaderMessageType::Dns);
+        }
+        if self.enable_flows {
+            self.add_if_missing(&mut readers, ReaderMessageType::Flow);
+        }
+        if self.enable_http {
+            self.add_if_missing(
+                &mut readers,
+                ReaderMessageType::Http(self.http_config.clone()),
+            );
+        }
+        if self.enable_smtp {
+            self.add_if_missing(&mut readers, ReaderMessageType::Smtp);
+        }
+        if self.enable_stats {
+            self.add_if_missing(&mut readers, ReaderMessageType::Stats);
+        }
+        if self.enable_tls {
+            self.add_if_missing(&mut readers, ReaderMessageType::Tls);
+        }
+
+        readers
+    }
+
+    fn render<'a>(&'a self, config_readers: &'a Vec<ConfigReader>) -> Result<String, Error> {
         let rules = self.rule_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suricata_config_path.to_string_lossy().to_owned();
         let default_log_dir = self.default_log_dir.to_string_lossy().to_owned();
@@ -333,42 +387,45 @@ impl Config {
             "no"
         };
         let max_pending_packets = format!("{}", self.max_pending_packets);
-        let readers = readers
-            .map(|r| ConfigReader {
-                eve: r.eve.clone(),
-                message: r.message.clone(),
-            })
+
+        let plugins = self
+            .plugins
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
             .collect();
+
         let template = ConfigTemplate {
             rules: &rules,
-            readers: readers,
+            readers: config_readers,
             community_id: &community_id,
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
             max_pending_packets: &max_pending_packets,
             live: self.live,
             default_log_dir: &default_log_dir,
+            plugins: &plugins,
         };
+
         debug!("Attempting to render");
         Ok(template.render().map_err(Error::from)?)
     }
 
-    pub fn materialize<'a, T>(&'a self, readers: T) -> Result<(), Error>
-    where
-        T: Iterator<Item = &'a Reader> + 'a,
-    {
-        let rendered = self.render(readers)?;
+    pub fn materialize<'a>(&'a self) -> Result<Vec<ConfigReader>, Error> {
+        let config_readers = self.config_readers();
+        let rendered = self.render(&config_readers)?;
         debug!("Writing output.yaml to {:?}", self.materialize_config_to);
         let mut f = std::fs::File::create(&self.materialize_config_to).map_err(Error::Io)?;
         f.write(rendered.as_bytes()).map_err(Error::from)?;
         debug!("Output file written");
-        Ok(())
+        Ok(config_readers)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::path::Path;
 
     use crate::config::InternalIps;
 
@@ -385,28 +442,70 @@ mod tests {
         assert_eq!(format!("{}", internal_ips), "169.254.0.0/16,192.168.0.0/16,fc00:0:0:0:0:0:0:0/7,127.0.0.1/32,10.0.0.0/8,172.16.0.0/12");
     }
 
+    fn get_reader_sections(readers: Vec<ConfigReader>) -> Vec<String> {
+        let config = Config {
+            enable_stats: false,
+            enable_flows: false,
+            readers: readers,
+            ..Config::default()
+        };
+
+        let config_readers = config.config_readers();
+
+        let rendered = config.render(&config_readers).unwrap();
+
+        let mut result = vec![];
+
+        let mut outputs_section: String = rendered
+            .chars()
+            .skip(rendered.find("outputs:\n").unwrap())
+            .collect();
+
+        let eve_log = "  - eve-log:\n";
+
+        match outputs_section.find(eve_log) {
+            Some(index) => {
+                outputs_section = outputs_section
+                    .chars()
+                    .skip(index + eve_log.len())
+                    .collect()
+            }
+            None => return result,
+        };
+
+        while let Some(split_index) = outputs_section.find(eve_log) {
+            result.push(outputs_section.chars().take(split_index).collect());
+            outputs_section = outputs_section
+                .chars()
+                .skip(split_index + eve_log.len())
+                .collect();
+        }
+
+        result.push(
+            outputs_section
+                .chars()
+                .take(outputs_section.find("  - http-log:").unwrap())
+                .collect(),
+        );
+
+        result
+    }
+
     fn get_http_section(http_config: HttpConfig) -> String {
-        let cfg = Config {
-            eve: EveConfiguration::Uds(Uds {
-                // Have to set this here or every test but the first fails
-                external_listener: true,
-                ..Uds::default()
-            }),
+        let config = Config {
             enable_http: true,
             http_config: http_config,
             enable_smtp: true,
             ..Config::default()
         };
-
-        let readers = cfg.readers().unwrap();
-
-        let rendered = cfg.render(readers.iter()).unwrap();
+        let rendered = config.render(&config.config_readers()).unwrap();
 
         // Start w/ - http: (unique within template)
         let mut http_section: String = rendered
             .chars()
             .skip(rendered.find("- http:").unwrap())
             .collect();
+
         // End w/ dns segment start
         http_section = http_section
             .chars()
@@ -414,6 +513,112 @@ mod tests {
             .collect();
 
         http_section
+    }
+
+    fn get_plugins_section<P: AsRef<Path>>(plugins: Vec<P>) -> Option<String> {
+        let config = Config {
+            plugins: plugins.into_iter().map(|p| p.as_ref().into()).collect(),
+            ..Config::default()
+        };
+        let rendered = config.render(&config.config_readers()).unwrap();
+
+        let plugins = "plugins:";
+
+        rendered
+            .find(plugins)
+            .map(|index| index - plugins.len())
+            .map(|to_skip| rendered.chars().skip(to_skip).collect())
+    }
+
+    #[test]
+    fn test_no_readers() {
+        let sections = get_reader_sections(vec![]);
+
+        // Alert is always added
+        assert_eq!(1, sections.len());
+        assert!(sections[0].find("        - alert\n").is_some());
+    }
+
+    #[test]
+    fn test_alert_redis() {
+        let sections = get_reader_sections(vec![ConfigReader {
+            eve: EveConfiguration::Redis(Redis::default()),
+            message: ReaderMessageType::Alert,
+        }]);
+
+        assert_eq!(1, sections.len());
+        assert!(sections[0].find("        - alert\n").is_some());
+        assert!(sections[0].find("      filetype: redis\n").is_some());
+    }
+
+    #[test]
+    fn test_alert_uds() {
+        let sections = get_reader_sections(vec![ConfigReader {
+            eve: EveConfiguration::Uds(Uds::default()),
+            message: ReaderMessageType::Alert,
+        }]);
+
+        assert_eq!(1, sections.len());
+        assert!(sections[0].find("        - alert\n").is_some());
+        assert!(sections[0].find("      filetype: unix_stream\n").is_some());
+    }
+
+    #[test]
+    fn test_alert_custom_non_uds() {
+        let sections = get_reader_sections(vec![ConfigReader {
+            eve: EveConfiguration::Custom(Custom {
+                name: "test-name".to_string(),
+                options: vec![CustomOption {
+                    key: "test-key".to_string(),
+                    value: "test-value".to_string(),
+                }],
+                uds: None,
+            }),
+            message: ReaderMessageType::Alert,
+        }]);
+
+        assert_eq!(1, sections.len());
+        assert!(sections[0].find("        - alert\n").is_some());
+        assert!(sections[0].find("      filetype: test-name\n").is_some());
+        assert!(sections[0].find("        test-key: test-value\n").is_some());
+    }
+
+    #[test]
+    fn test_alert_custom_uds() {
+        let sections = get_reader_sections(vec![ConfigReader {
+            eve: EveConfiguration::Custom(Custom {
+                name: "test-name".to_string(),
+                options: vec![CustomOption {
+                    key: "test-key".to_string(),
+                    value: "test-value".to_string(),
+                }],
+                uds: Some(Uds {
+                    path: "/test/path".into(),
+                    ..Uds::default()
+                }),
+            }),
+            message: ReaderMessageType::Alert,
+        }]);
+
+        assert_eq!(1, sections.len());
+        assert!(sections[0].find("        - alert\n").is_some());
+        assert!(sections[0].find("      filetype: test-name\n").is_some());
+        assert!(sections[0].find("        test-key: test-value\n").is_some());
+        assert!(sections[0].find("        filename: /test/path\n").is_some());
+    }
+
+    #[test]
+    fn test_dns_redis() {
+        let sections = get_reader_sections(vec![ConfigReader {
+            eve: EveConfiguration::Redis(Redis::default()),
+            message: ReaderMessageType::Dns,
+        }]);
+
+        assert_eq!(2, sections.len());
+        assert!(sections[0].find("        - dns\n").is_some());
+        assert!(sections[0].find("      filetype: redis\n").is_some());
+        assert!(sections[1].find("        - alert\n").is_some());
+        assert!(sections[1].find("      filetype: unix_stream\n").is_some());
     }
 
     #[test]
@@ -534,5 +739,24 @@ mod tests {
 
         assert_eq!(false, rendered.contains(" dump-all-headers:"));
         assert_eq!(true, rendered.contains("#dump-all-headers: both"));
+    }
+
+    #[test]
+    fn test_no_plugins() {
+        assert_eq!(None, get_plugins_section::<String>(vec![]));
+    }
+
+    #[test]
+    fn test_single_plugin() {
+        assert!(get_plugins_section(vec!["/test/path"])
+            .unwrap()
+            .contains("  - /test/path"));
+    }
+
+    #[test]
+    fn test_two_plugins() {
+        let plugins_section = get_plugins_section(vec!["/test/path", "test/path/two"]).unwrap();
+        assert!(plugins_section.contains("  - /test/path"));
+        assert!(plugins_section.contains("  - test/path/two"));
     }
 }
