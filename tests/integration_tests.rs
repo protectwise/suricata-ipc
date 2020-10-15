@@ -1,7 +1,8 @@
 #![deny(unused_must_use, unused_imports, bare_trait_objects)]
 use async_trait::async_trait;
-use futures::StreamExt;
 use log::*;
+use smol::channel::unbounded;
+use smol::stream::StreamExt;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -188,8 +189,30 @@ where
     ids_args.live = false;
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
-    let ids_messages = ids.take_readers();
-    let mut ids_messages = futures::stream::select_all(ids_messages.into_iter());
+    let (message_sender, message_receiver) = unbounded();
+
+    let _reader_tasks: Vec<smol::Task<()>> = ids
+        .take_readers()
+        .into_iter()
+        .map(|mut reader| {
+            let reader_sender = message_sender.clone();
+            smol::spawn(async move {
+                while let Some(msg) = reader.next().await {
+                    reader_sender.send(msg).await.unwrap();
+                }
+            })
+        })
+        .collect();
+
+    std::mem::drop(message_sender);
+
+    let messages_future = smol::spawn(async move {
+        let mut messages = vec![];
+        while let Ok(try_m) = message_receiver.recv().await {
+            messages.extend(try_m.unwrap());
+        }
+        messages
+    });
 
     let packets_sent = runner.run(&mut ids).await;
 
@@ -198,22 +221,11 @@ where
     info!("Packets sent, closing connection");
     ids.close()?;
 
-    smol::Timer::after(std::time::Duration::from_secs(1)).await;
-
-    let mut messages = vec![];
-    loop {
-        if let Some(try_m) = ids_messages.next().await {
-            messages.extend(try_m?);
-        } else {
-            break;
-        }
-    }
-
     info!("Finished collecting alerts");
 
     Ok(TestResult {
         packets_sent: packets_sent,
-        messages: messages,
+        messages: messages_future.await,
         intel_cache: cache,
     })
 }

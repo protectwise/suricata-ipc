@@ -109,9 +109,11 @@ pub mod proto {
     }
 }
 
-use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
+use smol::future::{or, FutureExt};
+use smol::io::AsyncBufReadExt;
+use smol::stream::StreamExt;
 
 pub struct Ids<'a, T> {
     readers: Vec<EveReader<T>>,
@@ -169,7 +171,7 @@ impl<'a, M> Ids<'a, M> {
 
         let opt_size = args.buffer_size.clone();
 
-        let future_connections: Result<Vec<_>, Error> = config_readers
+        let connection_tasks: Result<Vec<_>, Error> = config_readers
             .iter()
             .flat_map(|c| {
                 let reader = match c.create_reader() {
@@ -209,7 +211,7 @@ impl<'a, M> Ids<'a, M> {
             })
             .collect();
 
-        let future_connections = future_connections?;
+        let connection_tasks = connection_tasks?;
 
         let ipc = format!("--ipc={}", server_name);
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
@@ -230,32 +232,27 @@ impl<'a, M> Ids<'a, M> {
             let o = process.stdout.take().unwrap();
             let pid = process.id();
             let o = smol::Unblock::new(o);
-            let reader = futures::io::BufReader::new(o);
+            let reader = smol::io::BufReader::new(o);
             reader.lines().for_each(move |t| {
                 if let Ok(l) = t {
                     debug!("[Suricata ({})] {}", pid, l);
                 }
-                futures::future::ready(())
             })
         };
         let stderr_complete = {
             let o = process.stderr.take().unwrap();
             let pid = process.id();
             let o = smol::Unblock::new(o);
-            let reader = futures::io::BufReader::new(o);
+            let reader = smol::io::BufReader::new(o);
             reader.lines().for_each(move |t| {
                 if let Ok(l) = t {
                     error!("[Suricata ({})] {}", pid, l);
                 }
-                futures::future::ready(())
             })
         };
 
         let lines = async move {
-            futures::select! {
-                v = stdout_complete.fuse() => v,
-                v = stderr_complete.fuse() => v,
-            }
+            or(stdout_complete, stderr_complete).await;
 
             info!("Suricata closed");
         }
@@ -267,11 +264,13 @@ impl<'a, M> Ids<'a, M> {
 
         debug!("IPC Connection formed");
 
-        let readers = futures::future::join_all(future_connections.into_iter()).await;
-        let readers: Result<Vec<_>, Error> = readers.into_iter().collect();
+        let mut readers = Vec::with_capacity(connection_tasks.len());
+        for future_connection in connection_tasks.into_iter() {
+            readers.push(future_connection.await?);
+        }
 
         Ok(Ids {
-            readers: readers?,
+            readers: readers,
             process: Some(IdsProcess { inner: process }),
             ipc_server: connected_ipc,
         })
