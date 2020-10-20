@@ -65,7 +65,8 @@ mod serde_helpers;
 
 pub mod prelude {
     pub use super::config::{
-        Config, DumpAllHeaders, EveConfiguration, HttpConfig, InternalIps, Redis, Uds,
+        Config, ConfigReader, Custom, CustomOption, DumpAllHeaders, EveConfiguration, HttpConfig,
+        ReaderMessageType, Redis, Uds, InternalIps
     };
     pub use super::errors::Error;
     pub use super::eve::*;
@@ -171,17 +172,20 @@ impl<'a, M> Ids<'a, M> {
         let server = packet_ipc::Server::new().map_err(Error::from)?;
         let server_name = server.name().clone();
 
-        let readers = args.readers()?;
-
-        args.materialize(readers.iter())?;
+        let config_readers = args.materialize()?;
 
         let opt_size = args.buffer_size.clone();
 
-        let future_connections: Result<Vec<_>, Error> = readers
-            .into_iter()
-            .flat_map(|r| {
-                if let crate::config::Listener::Uds(l) = r.listener {
-                    let message = r.message;
+        let future_connections: Result<Vec<_>, Error> = config_readers
+            .iter()
+            .flat_map(|c| {
+                let reader = match c.create_reader() {
+                    Ok(reader) => reader,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                if let crate::config::Listener::Uds(l) = reader.listener {
+                    let message = reader.message;
                     let path = l.path;
                     debug!(
                         "Spawning acceptor for uds connection from suricata for {:?}",
@@ -211,6 +215,7 @@ impl<'a, M> Ids<'a, M> {
                 }
             })
             .collect();
+
         let future_connections = future_connections?;
 
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());

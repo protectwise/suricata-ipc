@@ -80,6 +80,16 @@ outputs:
         {% when EveConfiguration::Uds with (val) %}
       filetype: unix_stream
       filename: {{ val.path.to_string_lossy() }}
+        {% when EveConfiguration::Custom with (custom) %}
+      filetype: {{ custom.name }}
+          {% for option in custom.options %}
+        {{ option.key }}: {{ option.value }}
+          {% endfor %}
+          {% match custom.uds %}
+            {% when Some with (uds) %}
+        filename: {{ uds.path.to_string_lossy() }}
+            {% when None %}
+          {% endmatch %}
         {% when EveConfiguration::Redis with (val) %}
       filetype: redis
       redis:
@@ -1131,4 +1141,12 @@ ipc:
 # searched for in the same directory as this configuration file. You may
 # use absolute pathnames too.
 # You can specify more than 2 configuration files, if needed.
-# include: include1.yaml
+#include: include1.yaml
+#include: include2.yaml
+
+{% if plugins.len() > 0 %}
+plugins:
+{%- for plugin in plugins %}
+  - {{ plugin }}
+{%- endfor %}
+{% endif %}
