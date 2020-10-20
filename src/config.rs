@@ -252,6 +252,8 @@ pub struct Config {
     pub ipc_plugin: PathBuf,
     /// How many packets to wait for before allowing suricata to process
     pub ipc_allocation_batch: usize,
+    /// How many connections to make to suricata via ipc
+    pub ipc_servers: usize,
     /// Readers to use (supercedes enable_* properties, http_config)
     pub readers: Vec<ConfigReader>,
     /// Location of plugins to attempt to load
@@ -314,6 +316,7 @@ impl Default for Config {
             ipc_allocation_batch: 100,
             readers: vec![],
             plugins: vec![],
+            ipc_servers: 1,
         }
     }
 }

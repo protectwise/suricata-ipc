@@ -112,13 +112,12 @@ pub mod proto {
 use futures::{self, AsyncBufReadExt, FutureExt, StreamExt};
 use log::*;
 use prelude::*;
-
-//const READER_BUFFER_SIZE: usize = 128;
+use std::process::Child;
 
 pub struct Ids<'a, T> {
     readers: Vec<EveReader<T>>,
     process: Option<IdsProcess>,
-    ipc_server: packet_ipc::ConnectedIpc<'a>,
+    ipc_servers: Vec<packet_ipc::ConnectedIpc<'a>>,
 }
 
 unsafe impl<'a, T> Send for Ids<'a, T> {}
@@ -137,14 +136,18 @@ impl Drop for IdsProcess {
 }
 
 impl<'a, M> Ids<'a, M> {
-    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
+    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T], server_id: usize) -> Result<usize, Error> {
+        let server = self.ipc_servers.get(server_id).ok_or(Error::MissingServerId(server_id))?;
         let packets_sent = packets.len();
-        self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
+        server.send(packets).map_err(Error::PacketIpc)?;
         Ok(packets_sent)
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        self.ipc_server.close().map_err(Error::PacketIpc)
+        for server in self.ipc_servers.iter_mut() {
+            server.close().map_err(Error::PacketIpc)?
+        }
+        Ok(())
     }
 
     pub fn take_readers(&mut self) -> Vec<EveReader<M>> {
@@ -169,8 +172,10 @@ impl<'a, M> Ids<'a, M> {
             });
         }
         //need a one shot server name to give to suricata
-        let server = packet_ipc::Server::new().map_err(Error::from)?;
-        let server_name = server.name().clone();
+        let servers: Result<Vec<packet_ipc::Server<'a>>, Error> = (0..args.ipc_servers).into_iter().map(|_| {
+            packet_ipc::Server::new().map_err(Error::from)
+        }).collect();
+        let servers = servers?;
 
         let config_readers = args.materialize()?;
 
@@ -217,25 +222,10 @@ impl<'a, M> Ids<'a, M> {
             .collect();
 
         let future_connections = future_connections?;
+        let server_names = servers.iter().map(|s| s.name().clone()).collect();
+        let mut process = Self::spawn_suricata(args, server_names)?;
 
-        let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
-        command
-            .args(&[
-                "-c",
-                args.materialize_config_to.to_str().unwrap(),
-                "--set",
-                &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
-                "--capture-plugin=ipc-plugin",
-                "--set",
-                &format!("ipc.server={}", server_name),
-                "--set",
-                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
-            ])
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped());
-        info!("Spawning {:?}", command);
-        let mut process = command.spawn().map_err(Error::Io)?;
+        /////
 
         let stdout_complete = {
             let o = process.stdout.take().unwrap();
@@ -273,8 +263,11 @@ impl<'a, M> Ids<'a, M> {
         .boxed();
 
         smol::spawn(lines).detach();
-
-        let connected_ipc = smol::block_on(async move { server.accept() })?;
+        let mut connected_ipcs = vec![];
+        for server in servers {
+            let connected_ipc = smol::block_on(async move { server.accept() })?;
+            connected_ipcs.push(connected_ipc);
+        }
 
         debug!("IPC Connection formed");
 
@@ -284,7 +277,41 @@ impl<'a, M> Ids<'a, M> {
         Ok(Ids {
             readers: readers?,
             process: Some(IdsProcess { inner: process }),
-            ipc_server: connected_ipc,
+            ipc_servers: connected_ipcs,
         })
+    }
+
+    fn spawn_suricata(args: Config, server_names: Vec<String>) -> Result<Child, Error> {
+        let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
+        let server_args: Vec<String> = {
+            let mut base_args: Vec<String> = vec!["-c",
+                                                  args.materialize_config_to.to_str().unwrap(),
+                                                  "--set",
+                                                  &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
+                                                  "--capture-plugin=ipc-plugin",
+                                                  "--set",
+                                                  &format!("ipc.allocation-batch={}", args.ipc_allocation_batch)]
+                .into_iter()
+                .map(|s|{
+                    String::from(s)
+                }).collect();
+
+            let server_args = server_names
+                .iter()
+                .flat_map(|s| {
+                    vec!["--set".to_string(), format!("ipc.server={}", s)].into_iter()
+                });
+
+            base_args.extend(server_args);
+            base_args
+        };
+        command
+            .args(server_args)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped());
+        info!("Spawning {:?}", command);
+        command.spawn().map_err(Error::Io)
+
     }
 }
