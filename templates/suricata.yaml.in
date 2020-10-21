@@ -82,6 +82,7 @@ outputs:
       filename: {{ val.path.to_string_lossy() }}
         {% when EveConfiguration::Custom with (custom) %}
       filetype: {{ custom.name }}
+      {{ custom.name }}:
           {% for option in custom.options %}
         {{ option.key }}: {{ option.value }}
           {% endfor %}
