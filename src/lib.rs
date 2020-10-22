@@ -114,23 +114,49 @@ use prelude::*;
 use smol::future::{or, FutureExt};
 use smol::io::AsyncBufReadExt;
 use smol::stream::StreamExt;
+use std::time::Duration;
 
 pub struct Ids<'a, T> {
+    close_grace_period: Option<Duration>,
     readers: Vec<EveReader<T>>,
-    process: Option<IdsProcess>,
-    ipc_server: packet_ipc::ConnectedIpc<'a>,
+    process: Option<std::process::Child>,
+    ipc_server: Option<packet_ipc::ConnectedIpc<'a>>,
 }
 
 unsafe impl<'a, T> Send for Ids<'a, T> {}
 unsafe impl<'a, T> Sync for Ids<'a, T> {}
 
-pub struct IdsProcess {
-    pub inner: std::process::Child,
-}
-
-impl Drop for IdsProcess {
+impl<'a, T> Drop for Ids<'a, T> {
     fn drop(&mut self) {
-        if let Err(e) = self.inner.kill() {
+        let _ = self.close();
+
+        let mut process = match std::mem::replace(&mut self.process, None) {
+            Some(process) => process,
+            None => return,
+        };
+
+        // Attempt to close nicely
+        let pid = process.id() as _;
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+
+        if let Some(close_grace_period) = self.close_grace_period {
+            smol::block_on(or(
+                smol::unblock(move || {
+                    if let Err(e) = process.wait() {
+                        error!(
+                            "Unexpected error while waiting on suricata process: {:?}",
+                            e
+                        );
+                    }
+                }),
+                async move {
+                    // If process doesn't end during grace period, send it a sigkill
+                    smol::Timer::after(close_grace_period).await;
+                    // We already have a mutable borrow in process.wait(), send signal to pid
+                    unsafe { libc::kill(pid, libc::SIGKILL) };
+                },
+            ));
+        } else if let Err(e) = process.kill() {
             error!("Failed to stop suricata process: {:?}", e);
         }
     }
@@ -138,13 +164,22 @@ impl Drop for IdsProcess {
 
 impl<'a, M> Ids<'a, M> {
     pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T]) -> Result<usize, Error> {
-        let packets_sent = packets.len();
-        self.ipc_server.send(packets).map_err(Error::PacketIpc)?;
-        Ok(packets_sent)
+        if let Some(ipc_server) = self.ipc_server.as_ref() {
+            let packets_sent = packets.len();
+            ipc_server.send(packets).map_err(Error::PacketIpc)?;
+            Ok(packets_sent)
+        } else {
+            Err(Error::Custom {
+                msg: "Cannot send when Ids already closed.".to_string(),
+            })
+        }
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        self.ipc_server.close().map_err(Error::PacketIpc)
+        if let Some(mut ipc_server) = std::mem::replace(&mut self.ipc_server, None) {
+            ipc_server.close()?;
+        }
+        Ok(())
     }
 
     pub fn take_readers(&mut self) -> Vec<EveReader<M>> {
@@ -153,7 +188,7 @@ impl<'a, M> Ids<'a, M> {
 
     pub fn reload_rules(&self) -> bool {
         if let Some(ref p) = self.process {
-            unsafe { libc::kill(p.inner.id() as _, libc::SIGUSR2) == 0 }
+            unsafe { libc::kill(p.id() as _, libc::SIGUSR2) == 0 }
         } else {
             false
         }
@@ -270,9 +305,10 @@ impl<'a, M> Ids<'a, M> {
         }
 
         Ok(Ids {
+            close_grace_period: args.close_grace_period,
             readers: readers,
-            process: Some(IdsProcess { inner: process }),
-            ipc_server: connected_ipc,
+            process: Some(process),
+            ipc_server: Some(connected_ipc),
         })
     }
 }
