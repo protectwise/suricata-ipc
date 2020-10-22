@@ -2,9 +2,10 @@ use crate::errors::Error;
 use crate::eve::json;
 
 use crate::config::ReaderMessageType;
-use futures::{AsyncRead, Stream};
 use log::*;
 use pin_project::pin_project;
+use smol::io::AsyncRead;
+use smol::stream::Stream;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -68,7 +69,7 @@ where
             this.buf
                 .resize_with(*this.buffer_size - last_offset, Default::default);
         }
-        match futures::ready!(this
+        match smol::ready!(this
             .inner
             .as_mut()
             .poll_read(cx, &mut this.buf[last_offset..]))
@@ -129,7 +130,8 @@ where
 mod tests {
     use super::*;
     use crate::prelude::EveMessage;
-    use futures::{AsyncWriteExt, TryStreamExt};
+    use smol::io::AsyncWriteExt;
+    use smol::stream::StreamExt;
 
     #[test]
     fn reads_eve() {
