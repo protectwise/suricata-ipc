@@ -79,7 +79,12 @@ where
                 Poll::Ready(Some(Err(Error::from(e))))
             }
             Ok(bytes_read) => {
-                trace!("Read {}B", bytes_read);
+                trace!(
+                    "{} (path: {:?}): Read {}B",
+                    this.message_type,
+                    this.path,
+                    bytes_read
+                );
 
                 if bytes_read == 0 {
                     *this.complete = true;
@@ -89,14 +94,24 @@ where
                 let total_size = last_offset + bytes_read;
                 let read_slice = &this.buf[..total_size];
 
-                trace!("Collecting eve messages from {} bytes", total_size);
+                trace!(
+                    "{} (path: {:?}): Collecting eve messages from {} bytes",
+                    this.message_type,
+                    this.path,
+                    total_size
+                );
                 match json::JsonParser::parse(read_slice) {
                     Err(e) => {
                         *this.complete = true;
                         Poll::Ready(Some(Err(e)))
                     }
                     Ok((rem, msgs)) => {
-                        debug!("Collected {} eve messages", msgs.len());
+                        debug!(
+                            "{} (path: {:?}): Collected {} eve messages",
+                            this.message_type,
+                            this.path,
+                            msgs.len()
+                        );
 
                         *this.last_offset = rem.len();
 
@@ -110,7 +125,9 @@ where
                             .map(|v| {
                                 serde_json::from_slice::<T>(v.as_slice()).map_err(|e| {
                                     debug!(
-                                        "Failed to decode: {}",
+                                        "{} (path: {:?}): Failed to decode: {}",
+                                        this.message_type,
+                                        this.path,
                                         String::from_utf8(v.clone()).unwrap()
                                     );
                                     Error::SerdeJson(e)

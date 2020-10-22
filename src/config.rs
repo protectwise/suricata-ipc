@@ -4,6 +4,7 @@ use askama::Template;
 use log::debug;
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub enum ReaderMessageType {
@@ -249,6 +250,8 @@ pub struct Config {
     pub readers: Vec<ConfigReader>,
     /// Location of plugins to attempt to load
     pub plugins: Vec<PathBuf>,
+    /// Allowed duration before killing suricata process (defaults to None preserve previous behavior)
+    pub close_grace_period: Option<Duration>,
 }
 
 impl Default for Config {
@@ -299,6 +302,7 @@ impl Default for Config {
             },
             readers: vec![],
             plugins: vec![],
+            close_grace_period: None,
         }
     }
 }
