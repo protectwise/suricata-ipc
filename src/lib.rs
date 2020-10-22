@@ -119,24 +119,12 @@ use std::time::Duration;
 pub struct Ids<'a, T> {
     close_grace_period: Option<Duration>,
     readers: Vec<EveReader<T>>,
-    process: Option<IdsProcess>,
+    process: Option<std::process::Child>,
     ipc_server: Option<packet_ipc::ConnectedIpc<'a>>,
 }
 
 unsafe impl<'a, T> Send for Ids<'a, T> {}
 unsafe impl<'a, T> Sync for Ids<'a, T> {}
-
-pub struct IdsProcess {
-    pub inner: std::process::Child,
-}
-
-impl Drop for IdsProcess {
-    fn drop(&mut self) {
-        if let Err(e) = self.inner.kill() {
-            error!("Failed to stop suricata process: {:?}", e);
-        }
-    }
-}
 
 impl<'a, T> Drop for Ids<'a, T> {
     fn drop(&mut self) {
@@ -148,13 +136,13 @@ impl<'a, T> Drop for Ids<'a, T> {
         };
 
         // Attempt to close nicely
-        let pid = process.inner.id() as _;
+        let pid = process.id() as _;
         unsafe { libc::kill(pid, libc::SIGTERM) };
 
         if let Some(close_grace_period) = self.close_grace_period {
             smol::block_on(or(
                 smol::unblock(move || {
-                    if let Err(e) = process.inner.wait() {
+                    if let Err(e) = process.wait() {
                         error!(
                             "Unexpected error while waiting on suricata process: {:?}",
                             e
@@ -164,9 +152,12 @@ impl<'a, T> Drop for Ids<'a, T> {
                 async move {
                     // If process doesn't end during grace period, send it a sigkill
                     smol::Timer::after(close_grace_period).await;
+                    // We already have a mutable borrow in process.wait(), send signal to pid
                     unsafe { libc::kill(pid, libc::SIGKILL) };
                 },
             ));
+        } else if let Err(e) = process.kill() {
+            error!("Failed to stop suricata process: {:?}", e);
         }
     }
 }
@@ -197,7 +188,7 @@ impl<'a, M> Ids<'a, M> {
 
     pub fn reload_rules(&self) -> bool {
         if let Some(ref p) = self.process {
-            unsafe { libc::kill(p.inner.id() as _, libc::SIGUSR2) == 0 }
+            unsafe { libc::kill(p.id() as _, libc::SIGUSR2) == 0 }
         } else {
             false
         }
@@ -316,7 +307,7 @@ impl<'a, M> Ids<'a, M> {
         Ok(Ids {
             close_grace_period: args.close_grace_period,
             readers: readers,
-            process: Some(IdsProcess { inner: process }),
+            process: Some(process),
             ipc_server: Some(connected_ipc),
         })
     }
