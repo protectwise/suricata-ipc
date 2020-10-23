@@ -16,6 +16,10 @@
 
 #include "util-runmodes.h"
 
+#include "util-device.h"
+#include <stdio.h>
+
+
 const char *RunModeIpcGetDefaultMode(void)
 {
     return "autofp";
@@ -193,12 +197,6 @@ int RunModeIpcWorkers(void)
 {
     SCEnter();
 
-    int ret;
-
-    RunModeInitialize();
-
-    TimeModeSetOffline();
-
     const char *server = NULL;
     if (ConfGet("ipc.server", &server) == 0) {
         SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc.server from Conf");
@@ -209,7 +207,23 @@ int RunModeIpcWorkers(void)
 
     TimeModeSetLive();
 
-    ret = RunModeSetLiveCaptureWorkers(ParseIpcConfig,
+    IpcConfig *conf=(IpcConfig*)ParseIpcConfig(server);
+    if (!conf) {
+        SCLogError(SC_ERR_RUNMODE, "Failed to parse ipc.server conf");
+        exit(EXIT_FAILURE);
+    }
+
+    int i;
+    for (i=0; i<conf->nb_servers; i++)
+        LiveRegisterDevice(conf->servers[i]);
+
+    SCLogInfo("Registered %d IPC devices",LiveGetDeviceCount());
+
+    if (conf->servers) SCFree(conf->servers);
+    SCFree(conf);
+
+
+    int ret = RunModeSetLiveCaptureWorkers(ParseIpcConfig,
                                        IpcGetThreadsCount,
                                        "ReceiveIpc",
                                        "DecodeIpc",
