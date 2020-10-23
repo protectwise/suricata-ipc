@@ -185,7 +185,7 @@ impl<'a, M> Ids<'a, M> {
         }).collect();
 
         let servers = servers?;
-
+        debug!("Begin materialize");
         let config_readers = args.materialize()?;
 
         let opt_size = args.buffer_size.clone();
@@ -229,7 +229,7 @@ impl<'a, M> Ids<'a, M> {
                 }
             })
             .collect();
-
+        debug!("Readers are listening, starting suricata");
         let future_connections = future_connections?;
         let server_names = servers.iter().map(|s| s.name().clone()).collect();
         let mut process = Self::spawn_suricata(args, server_names)?;
@@ -321,6 +321,5 @@ impl<'a, M> Ids<'a, M> {
             .stdout(std::process::Stdio::piped());
         info!("Spawning {:?}", command);
         command.spawn().map_err(Error::Io)
-
     }
 }
