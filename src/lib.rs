@@ -172,9 +172,18 @@ impl<'a, M> Ids<'a, M> {
             });
         }
         //need a one shot server name to give to suricata
+
+        debug!("Starting {} IPC servers", args.ipc_servers);
         let servers: Result<Vec<packet_ipc::Server<'a>>, Error> = (0..args.ipc_servers).into_iter().map(|_| {
-            packet_ipc::Server::new().map_err(Error::from)
+            let ipc_server_result = packet_ipc::Server::new().map_err(Error::from);
+            if let Ok(ref ipc_server) = ipc_server_result {
+                debug!("Started IPC server at: {:?}", ipc_server.name());
+            } else {
+                error!("Failed to start IPC server");
+            }
+            ipc_server_result
         }).collect();
+
         let servers = servers?;
 
         let config_readers = args.materialize()?;
