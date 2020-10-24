@@ -305,11 +305,14 @@ impl<'a, M> Ids<'a, M> {
                     String::from(s)
                 }).collect();
 
-            let server_args = server_names
-                .iter()
-                .flat_map(|s| {
-                    vec!["--set".to_string(), format!("ipc.server={}", s)].into_iter()
-                });
+            let concat_server = server_names.join(",");
+            let server_args = vec!["--set".to_string(), format!("ipc.server={}", concat_server)];
+
+            // let server_args = server_names
+            //     .iter()
+            //     .flat_map(|s| {
+            //         vec!["--set".to_string(), format!("ipc.server={}", s)].into_iter()
+            //     });
 
             base_args.extend(server_args);
             base_args
