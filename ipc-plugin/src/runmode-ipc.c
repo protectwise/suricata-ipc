@@ -71,11 +71,11 @@ static void *ParseIpcConfig(const char *servers)
     memset(conf, 0, sizeof(IpcConfig));
 
     char delim[] = ",";
-    char *tok_servers[1000];
+    char *servers_conf=SCStrdup(servers);
 
-    char *mod_servers = SCStrdup(servers);
-    char *saveptr = NULL;
-    char *token = strtok_r(mod_servers, delim, &saveptr);
+    // looping the list of servers twice because we're at startup and it's easier than using a list
+    char * saveptr = NULL;
+    char * token = strtok_r(servers_conf, delim, &saveptr);
     conf->nb_servers = 0;
     while (token != NULL) {
         if(conf->nb_servers == 1000) {
@@ -89,14 +89,20 @@ static void *ParseIpcConfig(const char *servers)
 
     SCLogInfo("Connecting %d servers", conf->nb_servers);
 
+    SCFree(servers_conf);
+    servers_conf=SCStrdup(servers);
+
     conf->servers = SCMalloc(sizeof(char*) * conf->nb_servers);
     if(unlikely(conf->servers == NULL)) {
         SCLogError(SC_ERR_RUNMODE, "Runmode start failed");
         return NULL;
     }
 
-    for(int server = 0; server < conf->nb_servers; server++) {
-        conf->servers[server] = SCStrdup(tok_servers[server]);
+    int server = 0;
+    saveptr = NULL;
+    token = strtok_r(servers_conf, delim, &saveptr);
+    while (token != NULL) {
+        conf->servers[server] = token;
         if(unlikely(conf->servers[server] == NULL)) {
             SCLogError(SC_ERR_RUNMODE, "Runmode start failed");
             return NULL;
@@ -220,9 +226,7 @@ int RunModeIpcWorkers(void)
 
     SCLogInfo("Registered %d IPC devices",LiveGetDeviceCount());
 
-    if (conf->servers) SCFree(conf->servers);
-    SCFree(conf);
-
+    IpcDerefConfig(conf);
 
     int ret = RunModeSetLiveCaptureWorkers(ParseIpcConfig,
                                        IpcGetThreadsCount,
