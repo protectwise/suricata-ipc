@@ -230,6 +230,8 @@ TmEcode ReceiveIpcThreadInit(ThreadVars *tv, const void *initdata, void **data)
     
     *data = (void *)ptv;
 
+    ipc->DerefFunc(initdata);
+
     SCLogInfo("IPC Source Ready, connected to %s, with batch size of %" PRIi64, ptv->server_name, ptv->allocation_batch);
     SCReturnInt(TM_ECODE_OK);
 }

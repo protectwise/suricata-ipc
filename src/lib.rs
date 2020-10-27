@@ -66,7 +66,7 @@ mod serde_helpers;
 pub mod prelude {
     pub use super::config::{
         Config, ConfigReader, Custom, CustomOption, DumpAllHeaders, EveConfiguration, HttpConfig,
-        ReaderMessageType, Redis, Uds, InternalIps
+        InternalIps, ReaderMessageType, Redis, Uds,
     };
     pub use super::errors::Error;
     pub use super::eve::*;
@@ -136,8 +136,15 @@ impl Drop for IdsProcess {
 }
 
 impl<'a, M> Ids<'a, M> {
-    pub fn send<'b, T: AsIpcPacket + 'a>(&'a self, packets: &'b [T], server_id: usize) -> Result<usize, Error> {
-        let server = self.ipc_servers.get(server_id).ok_or(Error::MissingServerId(server_id))?;
+    pub fn send<'b, T: AsIpcPacket + 'a>(
+        &'a self,
+        packets: &'b [T],
+        server_id: usize,
+    ) -> Result<usize, Error> {
+        let server = self
+            .ipc_servers
+            .get(server_id)
+            .ok_or(Error::MissingServerId(server_id))?;
         let packets_sent = packets.len();
         server.send(packets).map_err(Error::PacketIpc)?;
         Ok(packets_sent)
@@ -174,15 +181,18 @@ impl<'a, M> Ids<'a, M> {
         //need a one shot server name to give to suricata
 
         debug!("Starting {} IPC servers", args.ipc_servers);
-        let servers: Result<Vec<packet_ipc::Server<'a>>, Error> = (0..args.ipc_servers).into_iter().map(|_| {
-            let ipc_server_result = packet_ipc::Server::new().map_err(Error::from);
-            if let Ok(ref ipc_server) = ipc_server_result {
-                debug!("Started IPC server at: {:?}", ipc_server.name());
-            } else {
-                error!("Failed to start IPC server");
-            }
-            ipc_server_result
-        }).collect();
+        let servers: Result<Vec<packet_ipc::Server<'a>>, Error> = (0..args.ipc_servers)
+            .into_iter()
+            .map(|_| {
+                let ipc_server_result = packet_ipc::Server::new().map_err(Error::from);
+                if let Ok(ref ipc_server) = ipc_server_result {
+                    debug!("Started IPC server at: {:?}", ipc_server.name());
+                } else {
+                    error!("Failed to start IPC server");
+                }
+                ipc_server_result
+            })
+            .collect();
 
         let servers = servers?;
         debug!("Begin materialize");
@@ -293,17 +303,18 @@ impl<'a, M> Ids<'a, M> {
     fn spawn_suricata(args: Config, server_names: Vec<String>) -> Result<Child, Error> {
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         let server_args: Vec<String> = {
-            let mut base_args: Vec<String> = vec!["-c",
-                                                  args.materialize_config_to.to_str().unwrap(),
-                                                  "--set",
-                                                  &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
-                                                  "--capture-plugin=ipc-plugin",
-                                                  "--set",
-                                                  &format!("ipc.allocation-batch={}", args.ipc_allocation_batch)]
-                .into_iter()
-                .map(|s|{
-                    String::from(s)
-                }).collect();
+            let mut base_args: Vec<String> = vec![
+                "-c",
+                args.materialize_config_to.to_str().unwrap(),
+                "--set",
+                &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
+                "--capture-plugin=ipc-plugin",
+                "--set",
+                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
+            ]
+            .into_iter()
+            .map(|s| String::from(s))
+            .collect();
 
             let concat_server = server_names.join(",");
             let server_args = vec!["--set".to_string(), format!("ipc.server={}", concat_server)];

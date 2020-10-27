@@ -71,9 +71,8 @@ static void *ParseIpcConfig(const char *servers)
     memset(conf, 0, sizeof(IpcConfig));
 
     char delim[] = ",";
-    char *servers_conf=SCStrdup(servers);
-
-    // looping the list of servers twice because we're at startup and it's easier than using a list
+    char * tok_servers[1000];
+    char * servers_conf=SCStrdup(servers);
     char * saveptr = NULL;
     char * token = strtok_r(servers_conf, delim, &saveptr);
     conf->nb_servers = 0;
@@ -88,26 +87,21 @@ static void *ParseIpcConfig(const char *servers)
     }
 
     SCLogInfo("Connecting %d servers", conf->nb_servers);
-
-    SCFree(servers_conf);
-    servers_conf=SCStrdup(servers);
-
     conf->servers = SCMalloc(sizeof(char*) * conf->nb_servers);
     if(unlikely(conf->servers == NULL)) {
         SCLogError(SC_ERR_RUNMODE, "Runmode start failed");
         return NULL;
     }
 
-    int server = 0;
-    saveptr = NULL;
-    token = strtok_r(servers_conf, delim, &saveptr);
-    while (token != NULL) {
-        conf->servers[server] = token;
+    for(int server = 0; server < conf->nb_servers; server++) {
+        conf->servers[server] = SCStrdup(tok_servers[server]);
         if(unlikely(conf->servers[server] == NULL)) {
             SCLogError(SC_ERR_RUNMODE, "Runmode start failed");
             return NULL;
         }
     }
+
+    SCFree(servers_conf);
 
     conf->allocation_batch = 100;
     if(ConfGetInt("ipc.allocation-batch", &conf->allocation_batch) == 0) {
@@ -225,8 +219,6 @@ int RunModeIpcWorkers(void)
         LiveRegisterDevice(conf->servers[i]);
 
     SCLogInfo("Registered %d IPC devices",LiveGetDeviceCount());
-
-    IpcDerefConfig(conf);
 
     int ret = RunModeSetLiveCaptureWorkers(ParseIpcConfig,
                                        IpcGetThreadsCount,
