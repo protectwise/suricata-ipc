@@ -12,5 +12,5 @@ Cargo.lock
 .idea
 *.iml
 .vscode/
-ipc-plugin/CMakeCache.txt
+plugins/ipc-plugin/CMakeCache.txt
 suricata-build/

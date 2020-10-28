@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::eve::json;
 
-use crate::config::ReaderMessageType;
+use crate::config::output::OutputType;
 use log::*;
 use pin_project::pin_project;
 use smol::io::AsyncRead;
@@ -17,7 +17,7 @@ type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
 #[pin_project]
 pub struct EveReader<T> {
     path: PathBuf,
-    message_type: ReaderMessageType,
+    output_type: OutputType,
     #[pin]
     inner: AsyncStream,
     buf: Vec<u8>,
@@ -28,19 +28,19 @@ pub struct EveReader<T> {
 }
 
 impl<T> EveReader<T> {
-    pub fn new(path: PathBuf, message_type: ReaderMessageType, v: AsyncStream) -> Self {
-        EveReader::with_capacity(path, message_type, v, DEFAULT_BUFFER_SIZE)
+    pub fn new(path: PathBuf, output_type: OutputType, v: AsyncStream) -> Self {
+        EveReader::with_capacity(path, output_type, v, DEFAULT_BUFFER_SIZE)
     }
 
     pub fn with_capacity(
         path: PathBuf,
-        message_type: ReaderMessageType,
+        output_type: OutputType,
         v: AsyncStream,
         sz: usize,
     ) -> Self {
         Self {
             path: path,
-            message_type: message_type,
+            output_type: output_type,
             inner: v,
             buf: Vec::with_capacity(sz),
             last_offset: 0,
@@ -81,7 +81,7 @@ where
             Ok(bytes_read) => {
                 trace!(
                     "{} (path: {:?}): Read {}B",
-                    this.message_type,
+                    this.output_type,
                     this.path,
                     bytes_read
                 );
@@ -96,7 +96,7 @@ where
 
                 trace!(
                     "{} (path: {:?}): Collecting eve messages from {} bytes",
-                    this.message_type,
+                    this.output_type,
                     this.path,
                     total_size
                 );
@@ -108,7 +108,7 @@ where
                     Ok((rem, msgs)) => {
                         debug!(
                             "{} (path: {:?}): Collected {} eve messages",
-                            this.message_type,
+                            this.output_type,
                             this.path,
                             msgs.len()
                         );
@@ -126,7 +126,7 @@ where
                                 serde_json::from_slice::<T>(v.as_slice()).map_err(|e| {
                                     debug!(
                                         "{} (path: {:?}): Failed to decode: {}",
-                                        this.message_type,
+                                        this.output_type,
                                         this.path,
                                         String::from_utf8(v.clone()).unwrap()
                                     );

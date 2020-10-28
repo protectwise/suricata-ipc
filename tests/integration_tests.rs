@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
+use suricata_ipc::config::ipc_plugin::IpcPluginConfig;
 #[cfg(feature = "protobuf")]
 use suricata_ipc::prelude::proto::Eve;
 use suricata_ipc::prelude::*;
@@ -179,15 +180,22 @@ where
 
     let suricata_yaml = temp_file.join(SURICATA_YAML);
 
+    let eve_config = || suricata_ipc::config::eve::EveConfiguration::uds(temp_file.clone());
+
+    let outputs: Vec<Box<dyn suricata_ipc::config::output::Output + Send + Sync>> = vec![
+        Box::new(suricata_ipc::config::output::Alert::new(eve_config())),
+        Box::new(suricata_ipc::config::output::Dns::new(eve_config())),
+        Box::new(suricata_ipc::config::output::Http::new(eve_config())),
+    ];
+
+    let mut ipc_plugin = IpcPluginConfig::default();
+    ipc_plugin.live = false;
+
     let mut ids_args = Config::default();
-    ids_args.enable_dns = true;
-    ids_args.enable_http = true;
-    ids_args.enable_smtp = true;
-    ids_args.enable_tls = true;
+    ids_args.outputs = outputs;
     ids_args.materialize_config_to = suricata_yaml;
-    ids_args.eve = EveConfiguration::uds(temp_file);
     ids_args.rule_path = rules;
-    ids_args.live = false;
+    ids_args.ipc_plugin = ipc_plugin;
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
     let (message_sender, message_receiver) = unbounded();

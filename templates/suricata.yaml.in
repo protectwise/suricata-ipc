@@ -72,34 +72,13 @@ outputs:
       append: yes
       #filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
 
-{% for reader in readers %}
+{% for output in outputs %}
   # Extensible Event Format (nicknamed EVE) event log in JSON format
   - eve-log:
       enabled: yes
-    {% match reader.eve %}
-        {% when EveConfiguration::Uds with (val) %}
-      filetype: unix_stream
-      filename: {{ val.path.to_string_lossy() }}
-        {% when EveConfiguration::Custom with (custom) %}
-      filetype: {{ custom.name }}
-      {{ custom.name }}:
-          {% for option in custom.options %}
-        {{ option.key }}: {{ option.value }}
-          {% endfor %}
-          {% match custom.uds %}
-            {% when Some with (uds) %}
-        filename: {{ uds.path.to_string_lossy() }}
-            {% when None %}
-          {% endmatch %}
-        {% when EveConfiguration::Redis with (val) %}
-      filetype: redis
-      redis:
-        server: {{ val.server }}
-        port: {{ val.port }}
-        mode: publish
-    {% endmatch %}
+{{ output.connection }}
 
-    # enable/disable the community id feature.
+      # enable/disable the community id feature.
       community-id: {{ community_id }}
       # Seed value for the ID output. Valid values are 0-65535.
       community-id-seed: 0
@@ -123,54 +102,7 @@ outputs:
         header: X-Forwarded-For
 
       types:
-    {% match reader.message %}
-      {% when ReaderMessageType::Alert %}
-        - alert
-      {% when ReaderMessageType::Dns %}
-        - dns
-      {% when ReaderMessageType::Flow %}
-        - flow
-      {% when ReaderMessageType::Http with (http_config) %}
-        - http:
-        {% if http_config.extended %}
-            extended: yes     # enable this for extended logging information
-        {% else %}
-            #extended: yes     # enable this for extended logging information
-        {% endif %}
-            # custom allows additional HTTP fields to be included in eve-log.
-            # the example below adds three additional fields when uncommented
-        {% if http_config.custom.len() == 0 %}
-            #custom: [Accept-Encoding, Accept-Language, Authorization]
-        {% else %}
-            custom: [{{ http_config.custom|join(", ") }}]
-        {% endif %}
-            # set this value to one and only one from {both, request, response}
-            # to dump all HTTP headers for every HTTP request and/or response
-        {% match http_config.dump_all_headers %}
-          {% when Some with (dump_all_headers) %}
-            {% match dump_all_headers %}
-              {% when DumpAllHeaders::Both %}
-            dump-all-headers: both
-              {% when DumpAllHeaders::Request %}
-            dump-all-headers: request
-              {% when DumpAllHeaders::Response %}
-            dump-all-headers: response
-            {% endmatch %}
-          {% when None %}
-            #dump-all-headers: both
-        {% endmatch %}
-      {% when ReaderMessageType::Smtp %}
-        - smtp
-      {% when ReaderMessageType::Stats %}
-        - stats:
-            enabled: yes
-            totals: yes       # stats for all threads merged together
-            threads: no       # per thread stats
-            deltas: no        # include delta values
-      {% when ReaderMessageType::Tls %}
-        - tls:
-            enabled: yes
-    {% endmatch %}
+      {{ output.types }}
 {% endfor %}
 
   # a line based log of HTTP requests (no alerts)
@@ -516,7 +448,7 @@ max-pending-packets: {{ max_pending_packets }}
 # Runmode the engine should use. Please check --list-runmodes to get the available
 # runmodes for each packet acquisition method. Default depends on selected capture
 # method. 'workers' generally gives best performance.
-runmode: workers
+runmode: {{runmode}}
 
 # Specifies the kind of flow load balancer used by the flow pinned autofp mode.
 #
@@ -1130,9 +1062,6 @@ classification-file: {{ suricata_config_path }}/classification.config
 reference-config-file: {{ suricata_config_path }}/reference.config
 # threshold-file: {{ suricata_config_path }}/threshold.config
 
-ipc:
-  live: {{ live }}
-
 ##
 ## Include other configs
 ##
@@ -1145,9 +1074,13 @@ ipc:
 #include: include1.yaml
 #include: include2.yaml
 
-{% if plugins.len() > 0 %}
 plugins:
-{%- for plugin in plugins %}
-  - {{ plugin }}
-{%- endfor %}
-{% endif %}
+  - {{ ipc_plugin.path }}
+{% for plugin in plugins %}
+  - {{ plugin.path }}
+{% endfor %}
+
+{{ ipc_plugin.config }}
+{% for plugin in plugins %}
+{{ plugin.config }}
+{% endfor %}

@@ -1,0 +1,5 @@
+      filetype: redis
+      redis:
+        server: {{ redis.server }}
+        port: {{ redis.port }}
+        mode: publish

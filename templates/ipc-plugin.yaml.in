@@ -1,0 +1,4 @@
+ipc-plugin:
+  live: {{ live }}
+  allocation-batch-size: {{ allocation_batch_size }}
+  servers: "{{ servers }}"

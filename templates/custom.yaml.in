@@ -1,0 +1,9 @@
+      filetype: {{ name }}
+{% match path %}
+  {% when Some with (val) %}
+      filename: {{ val }}
+  {% when None %}
+{% endmatch %}
+{% for tuple in options %}
+      {{ tuple.0 }}: {{ tuple.1 }}
+{% endfor %}

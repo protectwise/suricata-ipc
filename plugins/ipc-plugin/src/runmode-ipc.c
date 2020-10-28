@@ -19,6 +19,25 @@
 #include "util-device.h"
 #include <stdio.h>
 
+void InitializeRunMode() {
+    int live_mode = 1;
+    int conf_live_mode = 0;
+    if (ConfGetBool("ipc-plugin.live", &conf_live_mode) == 1) {
+        live_mode = conf_live_mode;
+    } else {
+        SCLogInfo("ipc-plugin.live not set in config, defaulting to live mode");
+    }
+
+    RunModeInitialize();
+
+    if (live_mode) {
+        SCLogInfo("IPC using live mode");
+        TimeModeSetLive();
+    } else {
+        SCLogInfo("IPC using offline mode");
+        TimeModeSetOffline();
+    }
+}
 
 const char *RunModeIpcGetDefaultMode(void)
 {
@@ -104,8 +123,8 @@ static void *ParseIpcConfig(const char *servers)
     SCFree(servers_conf);
 
     conf->allocation_batch = 100;
-    if(ConfGetInt("ipc.allocation-batch", &conf->allocation_batch) == 0) {
-        SCLogInfo("No ipc.allocation-batch parameters, defaulting to 100");
+    if(ConfGetInt("ipc-plugin.allocation-batch-size", &conf->allocation_batch) == 0) {
+        SCLogInfo("No ipc-plugin.allocation-batch-size parameters, defaulting to 100");
     }
 
     conf->DerefFunc = IpcDerefConfig;
@@ -133,14 +152,12 @@ int RunModeIpcAutoFp(void)
     SCEnter();
 
     const char *server = NULL;
-    if (ConfGet("ipc.server", &server) == 0) {
-        SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc.server from Conf");
+    if (ConfGet("ipc-plugin.servers", &server) == 0) {
+        SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc-plugin.servers from Conf");
         exit(EXIT_FAILURE);
     }
 
-    RunModeInitialize();
-
-    TimeModeSetOffline();
+    InitializeRunMode();
 
     int ret = RunModeSetLiveCaptureSingle(ParseIpcConfig,
                                       IpcGetThreadsCount,
@@ -166,14 +183,12 @@ int RunModeIpcSingle(void)
     SCEnter();
 
     const char *server = NULL;
-    if (ConfGet("ipc.server", &server) == 0) {
-        SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc.server from Conf");
+    if (ConfGet("ipc-plugin.servers", &server) == 0) {
+        SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc-plugin.servers from Conf");
         exit(EXIT_FAILURE);
     }
 
-    RunModeInitialize();
-
-    TimeModeSetOffline();
+    InitializeRunMode();
 
     int ret = RunModeSetLiveCaptureAutoFp(ParseIpcConfig,
                                           IpcGetThreadsCount,
@@ -199,14 +214,12 @@ int RunModeIpcWorkers(void)
     SCEnter();
 
     const char *server = NULL;
-    if (ConfGet("ipc.server", &server) == 0) {
-        SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc.server from Conf");
+    if (ConfGet("ipc-plugin.servers", &server) == 0) {
+        SCLogError(SC_ERR_RUNMODE, "Failed retrieving ipc-plugin.servers from Conf");
         exit(EXIT_FAILURE);
     }
 
-    RunModeInitialize();
-
-    TimeModeSetLive();
+    InitializeRunMode();
 
     IpcConfig *conf=(IpcConfig*)ParseIpcConfig(server);
     if (!conf) {
