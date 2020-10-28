@@ -13,5 +13,5 @@ debug = true
 log = "0.4"
 packet-ipc = "0.14"
 
-#suricata = { path = "/build/suricata/rust" }
-suricata = { path = "/Users/dannybrowning/code/suricata/suricata_src/rust" }
+suricata = { path = "/build/suricata/rust" }
+#suricata = { path = "../../suricata-build/suricata-6.0.0-beta1/rust" }

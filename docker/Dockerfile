@@ -1,6 +1,15 @@
 FROM ubuntu:xenial AS system-setup
+# winpty docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name suricata_rs_dev -v ~/IdeaProjects/suricata-ipc:/development suricata-rs-dev
 
 WORKDIR /build
+#Xenial needs a new version of cmake (3.18.2)
+
+RUN apt-get update -y \
+    && apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget \
+    && wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null \
+    && apt-add-repository 'deb https://apt.kitware.com/ubuntu/ xenial main' \
+    && apt-get update -y \
+    && apt-get install -y cmake
 
 RUN apt-get update -y && apt-get install -y wget software-properties-common
 RUN apt-get update -y \
@@ -103,16 +112,6 @@ VOLUME ["/development"]
 ENTRYPOINT ["/bin/bash"]
 
 FROM development AS build-plugin
-
-#Xenial needs a new version of cmake (3.18.2)
-
-RUN apt-get update -y \
-    && apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget \
-    && wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null \
-    && apt-add-repository 'deb https://apt.kitware.com/ubuntu/ xenial main' \
-    && apt-get update -y \
-    && apt-get install -y cmake
-
 
 #RUN apt-get update && apt-get install -y cmake
 
