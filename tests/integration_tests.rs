@@ -99,7 +99,8 @@ async fn send_tracers_with_reload<'a, T>(ids: &'a Ids<'a, T>) -> usize {
 async fn send_tracer<'a, T>(ids: &'a Ids<'a, T>, ts: SystemTime) -> usize {
     let data = Tracer::data().to_vec();
     let p = net_parser_rs::PcapRecord::new(ts, data.len() as _, data.len() as _, &data);
-    ids.send(&[WrapperPacket::new(&p)]).expect("Failed to send");
+    ids.send(&[WrapperPacket::new(&p)], 0)
+        .expect("Failed to send");
 
     1
 }
@@ -148,7 +149,7 @@ async fn send_packets_from_file<'a, T>(
 
     while let Some(ref packets) = packets.next() {
         packets_sent += ids
-            .send(packets.as_slice())
+            .send(packets.as_slice(), 0)
             .expect("Failed to send packets");
         smol::Timer::after(Duration::from_millis(10)).await;
         trace!("Sent {} packets", packets_sent);

@@ -110,7 +110,7 @@ struct ConfigTemplate<'a> {
     internal_ips: &'a InternalIps,
     max_pending_packets: &'a str,
     live: bool,
-    default_log_dir: &'a str,
+    default_log_dir: std::borrow::Cow<'a, str>,
     plugins: &'a Vec<String>,
 }
 
@@ -226,13 +226,15 @@ pub struct Config {
     pub enable_community_id: bool,
     /// Path where config will be materialized to
     pub materialize_config_to: PathBuf,
-    /// Path where the suricata executable lives
+    /// Path where the suricata executable lives, defaults to /usr/bin/suricata, can be overridden
+    /// with environment variable SURICATA_EXE
     pub exe_path: PathBuf,
     /// Configuration for eve
     pub eve: EveConfiguration,
     /// Path where the rules reside at
     pub rule_path: PathBuf,
-    /// Path where suricata config resides at (e.g. threshold config)
+    /// Path where suricata config resides at (e.g. threshold config), defaults to /etc/suricata,
+    /// can be overridden with environment variable SURICATA_CONFIG_DIR
     pub suricata_config_path: PathBuf,
     /// Internal ips to use for HOME_NET
     pub internal_ips: InternalIps,
@@ -252,6 +254,13 @@ pub struct Config {
     pub plugins: Vec<PathBuf>,
     /// Allowed duration before killing suricata process (defaults to None preserve previous behavior)
     pub close_grace_period: Option<Duration>,
+    /// Path where suricata ipc plugin resides at, defaults to /usr/lib/ipc-plugin.so, can be
+    /// overridden with environment variable SURICATA_IPC_PLUGIN
+    pub ipc_plugin: PathBuf,
+    /// How many packets to wait for before allowing suricata to process
+    pub ipc_allocation_batch: usize,
+    /// How many connections to make to suricata via ipc
+    pub ipc_servers: usize,
 }
 
 impl Default for Config {
@@ -267,7 +276,7 @@ impl Default for Config {
             enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {
-                if let Some(e) = std::env::var_os("SURICATA_EXE").map(|s| PathBuf::from(s)) {
+                if let Some(e) = std::env::var_os("SURICATA_EXE").map(PathBuf::from) {
                     e
                 } else {
                     PathBuf::from("/usr/local/bin/suricata")
@@ -303,6 +312,15 @@ impl Default for Config {
             readers: vec![],
             plugins: vec![],
             close_grace_period: None,
+            ipc_plugin: {
+                if let Some(e) = std::env::var_os("SURICATA_IPC_PLUGIN").map(PathBuf::from) {
+                    e
+                } else {
+                    PathBuf::from("/usr/lib/ipc-plugin.so")
+                }
+            },
+            ipc_allocation_batch: 100,
+            ipc_servers: 1,
         }
     }
 }
@@ -383,13 +401,13 @@ impl Config {
     fn render<'a>(&'a self, config_readers: &'a Vec<ConfigReader>) -> Result<String, Error> {
         let rules = self.rule_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suricata_config_path.to_string_lossy().to_owned();
-        let default_log_dir = self.default_log_dir.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
         let community_id = if self.enable_community_id {
             "yes"
         } else {
             "no"
         };
+        let default_log_dir = self.default_log_dir.to_string_lossy();
         let max_pending_packets = format!("{}", self.max_pending_packets);
 
         let plugins = self
@@ -406,7 +424,7 @@ impl Config {
             internal_ips: internal_ips,
             max_pending_packets: &max_pending_packets,
             live: self.live,
-            default_log_dir: &default_log_dir,
+            default_log_dir: default_log_dir,
             plugins: &plugins,
         };
 

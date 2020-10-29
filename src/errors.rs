@@ -22,6 +22,8 @@ pub enum Error {
     RuleNotFound { gid: u64, sid: u64 },
     #[error("Askama error: {0:?}")]
     Askama(#[from] askama::Error),
+    #[error("MissingServerId: {0}")]
+    MissingServerId(usize),
     #[error("{0}", msg)]
     Custom { msg: String },
 }
