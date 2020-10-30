@@ -1,0 +1,18 @@
+[package]
+name = "kafka-plugin-rs"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.release]
+debug = true
+
+[dependencies]
+log = "0.4"
+rdkafka = "0.24"
+smol = "1.2"
+thiserror = "1.0"
+
+suricata = { path = "/build/suricata/rust" }

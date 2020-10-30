@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 
-project(ipc-plugin VERSION 0.1.0 DESCRIPTION "Suricata IPC Capture Plugin" LANGUAGES C CXX)
-
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+project(kafka-plugin VERSION 0.1.0 DESCRIPTION "Suricata EVE Kafka Plugin" LANGUAGES C CXX)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -22,11 +19,6 @@ else()
     set(CMAKE_C_FLAGS "-DTLS_C11 -Wall -Wextra -std=c11 ${CMAKE_C_FLAGS}")
 endif()
 
-# Fix behavior of CMAKE_CXX_STANDARD when targeting macOS.
-if (POLICY CMP0025)
-    cmake_policy(SET CMP0025 NEW)
-endif ()
-
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(MACOSX TRUE)
     set(CMAKE_C_FLAGS "-DOS_DARWIN ${CMAKE_C_FLAGS}")
@@ -44,20 +36,22 @@ find_package(Nspr REQUIRED)
 #endif()
 
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${LIBSURICATA_INCLUDE_DIRS}
-    ${LIBPCRE_INCLUDE_DIRS}
-    ${LIBJANSSON_INCLUDE_DIRS}
-    ${LIBMAGIC_INCLUDE_DIRS}
-    ${LIBNSS_INCLUDE_DIRS}
-    ${LIBNSPR_INCLUDE_DIRS}
+        src
+        ${LIBSURICATA_INCLUDE_DIRS}
+        ${LIBPCRE_INCLUDE_DIRS}
+        ${LIBJANSSON_INCLUDE_DIRS}
+        ${LIBMAGIC_INCLUDE_DIRS}
+        ${LIBNSS_INCLUDE_DIRS}
+        ${LIBNSPR_INCLUDE_DIRS}
 )
 
 add_library(ipc-plugin SHARED
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runmode-ipc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/source-ipc.c
+    src/plugin.c
+    src/runmode-ipc.c
+    src/source-ipc.c
 )
+
+add_dependencies(ipc-plugin gen-header)
 
 target_link_libraries(
     ipc-plugin

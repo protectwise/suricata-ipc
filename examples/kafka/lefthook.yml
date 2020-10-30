@@ -2,15 +2,15 @@ kafka:
   piped: true
   commands:
     1_build:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yml build
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/kafka-docker-compose.yml build
     2_kafka_up:
-      run: CI_JOB_ID=$CI_JOB_ID KAFKA_HOST=localhost docker-compose -f docker/docker-compose.yml up -d kafka
+      run: CI_JOB_ID=$CI_JOB_ID KAFKA_HOST=localhost docker-compose -f docker/kafka-docker-compose.yml up -d kafka
 
 down:
   piped: true
   commands:
     4_down:
-      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/docker-compose.yml down
+      run: CI_JOB_ID=$CI_JOB_ID docker-compose -f docker/kafka-docker-compose.yml down
 
 develop:
   piped: true

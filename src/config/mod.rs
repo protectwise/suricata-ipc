@@ -1,58 +1,17 @@
-use crate::errors::Error;
+pub mod eve;
+pub mod ipc_plugin;
+pub mod output;
+pub mod plugin;
 
+use crate::errors::Error;
 use askama::Template;
+use ipc_plugin::{IpcPlugin, IpcPluginConfig};
 use log::debug;
+use output::Output;
+use plugin::Plugin;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-
-#[derive(Clone, Debug)]
-pub enum ReaderMessageType {
-    Alert,
-    Dns,
-    Flow,
-    Http(HttpConfig),
-    Smtp,
-    Stats,
-    Tls,
-}
-
-impl std::fmt::Display for ReaderMessageType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Alert => write!(f, "Alert"),
-            Self::Dns => write!(f, "Dns"),
-            Self::Flow => write!(f, "Flow"),
-            Self::Http(_) => write!(f, "Http"),
-            Self::Smtp => write!(f, "Smtp"),
-            Self::Stats => write!(f, "Stats"),
-            Self::Tls => write!(f, "Tls"),
-        }
-    }
-}
-
-pub struct UdsListener {
-    pub listener: std::os::unix::net::UnixListener,
-    pub path: std::path::PathBuf,
-}
-
-pub enum Listener {
-    External,
-    Redis,
-    Uds(UdsListener),
-}
-
-pub struct Reader {
-    pub eve: EveConfiguration,
-    pub message: ReaderMessageType,
-    pub listener: Listener,
-}
-
-impl Reader {
-    pub fn message(&self) -> &ReaderMessageType {
-        &self.message
-    }
-}
 
 pub struct InternalIps(Vec<String>);
 
@@ -70,158 +29,66 @@ impl std::fmt::Display for InternalIps {
     }
 }
 
-#[derive(Clone)]
-pub struct ConfigReader {
-    pub eve: EveConfiguration,
-    pub message: ReaderMessageType,
+struct RenderedOutput {
+    connection: String,
+    types: String,
 }
 
-impl ConfigReader {
-    pub fn create_reader(&self) -> Result<Reader, Error> {
-        match &self.eve {
-            EveConfiguration::Uds(uds) => uds_to_reader(uds.clone(), self.message.clone()),
-            EveConfiguration::Redis(_) => Ok(Reader {
-                eve: self.eve.clone(),
-                message: self.message.clone(),
-                listener: Listener::Redis,
-            }),
-            EveConfiguration::Custom(custom) => {
-                if let Some(uds) = custom.uds.as_ref() {
-                    uds_to_reader(uds.clone(), self.message.clone())
-                } else {
-                    Ok(Reader {
-                        eve: self.eve.clone(),
-                        message: self.message.clone(),
-                        listener: Listener::External,
-                    })
-                }
-            }
-        }
-    }
+struct RenderedIpcPlugin<'a> {
+    path: std::borrow::Cow<'a, str>,
+    config: String,
+}
+
+struct RenderedPlugin<'a> {
+    path: std::borrow::Cow<'a, str>,
+    config: String,
 }
 
 #[derive(Template)]
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
+    runmode: Runmode,
     rules: &'a str,
-    readers: &'a Vec<ConfigReader>,
+    outputs: Vec<RenderedOutput>,
     community_id: &'a str,
     suricata_config_path: &'a str,
     internal_ips: &'a InternalIps,
     max_pending_packets: &'a str,
-    live: bool,
     default_log_dir: std::borrow::Cow<'a, str>,
-    plugins: &'a Vec<String>,
+    ipc_plugin: RenderedIpcPlugin<'a>,
+    plugins: Vec<RenderedPlugin<'a>>,
 }
 
-/// Configuration options for redis output
-#[derive(Clone)]
-pub struct Redis {
-    pub server: String,
-    pub port: u16,
-}
-
-impl Default for Redis {
-    fn default() -> Self {
-        Self {
-            server: "redis".into(),
-            port: 6379,
-        }
-    }
-}
-
-/// Configuration options for Alert socket
-#[derive(Clone)]
-pub struct Uds {
-    pub path: PathBuf,
-    pub external_listener: bool,
-}
-
-impl Default for Uds {
-    fn default() -> Self {
-        Self {
-            path: PathBuf::from("/tmp"),
-            external_listener: false,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct CustomOption {
-    pub key: String,
-    pub value: String,
-}
-
-#[derive(Clone)]
-pub struct Custom {
-    pub name: String,
-    pub options: Vec<CustomOption>,
-    pub uds: Option<Uds>,
-}
-
-/// Eve configuration
-#[derive(Clone)]
-pub enum EveConfiguration {
-    Redis(Redis),
-    Uds(Uds),
-    Custom(Custom),
-}
-
-impl EveConfiguration {
-    pub fn uds(path: PathBuf) -> Self {
-        Self::Uds(Uds {
-            path: path,
-            external_listener: false,
-        })
-    }
-}
-
-impl Default for EveConfiguration {
-    fn default() -> Self {
-        Self::Uds(Uds::default())
-    }
-}
-
+/// Runmodes for suricata
 #[derive(Clone, Debug)]
-pub enum DumpAllHeaders {
-    Both,
-    Request,
-    Response,
+pub enum Runmode {
+    Single,
+    AutoFp,
+    Workers,
 }
 
-#[derive(Clone, Debug)]
-pub struct HttpConfig {
-    pub extended: bool,
-    pub custom: Vec<String>,
-    pub dump_all_headers: Option<DumpAllHeaders>,
-}
-
-impl Default for HttpConfig {
+impl Default for Runmode {
     fn default() -> Self {
-        Self {
-            extended: false,
-            custom: vec![],
-            dump_all_headers: Some(DumpAllHeaders::Both),
+        Self::AutoFp
+    }
+}
+
+impl std::fmt::Display for Runmode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single => write!(f, "single"),
+            Self::AutoFp => write!(f, "autofp"),
+            Self::Workers => write!(f, "workers"),
         }
     }
 }
 
 /// Configuration options for suricata
 pub struct Config {
-    /// Whether statistics should be enabled (output) for suricata, defaults to true
-    pub enable_stats: bool,
-    /// Whether flows should be enabled (output) for suricata, defaults to true
-    pub enable_flows: bool,
-    /// Whether http should be enabled (output) for suricata, defaults to false
-    pub enable_http: bool,
-    /// Additional http configuration options
-    pub http_config: HttpConfig,
-    /// Whether dns should be enabled (output) for suricata, defaults to false
-    pub enable_dns: bool,
-    /// Whether smtp should be enabled (output) for suricata, defaults to false
-    pub enable_smtp: bool,
-    /// Whether tls should be enabled (output) for suricata, defaults to false
-    pub enable_tls: bool,
+    /// Runmode to use
+    pub runmode: Runmode,
+    /// Outputs to connect to suricata
+    pub outputs: Vec<Box<dyn Output + Send + Sync>>,
     /// Whether community id should be enabled, defaults to true
     pub enable_community_id: bool,
     /// Path where config will be materialized to
@@ -229,8 +96,6 @@ pub struct Config {
     /// Path where the suricata executable lives, defaults to /usr/bin/suricata, can be overridden
     /// with environment variable SURICATA_EXE
     pub exe_path: PathBuf,
-    /// Configuration for eve
-    pub eve: EveConfiguration,
     /// Path where the rules reside at
     pub rule_path: PathBuf,
     /// Path where suricata config resides at (e.g. threshold config), defaults to /etc/suricata,
@@ -242,37 +107,42 @@ pub struct Config {
     pub max_pending_packets: u16,
     /// Adjust uds buffer size
     pub buffer_size: Option<usize>,
-    /// Whether we should use live or offline mode in suricata. Live will use system time for
-    /// time related activites in suricata like flow expiration, while offline mode uses packet
-    /// time per thread
-    pub live: bool,
     /// Directory to use for suricata logging
     pub default_log_dir: PathBuf,
-    /// Readers to use (supercedes enable_* properties, http_config)
-    pub readers: Vec<ConfigReader>,
-    /// Location of plugins to attempt to load
-    pub plugins: Vec<PathBuf>,
     /// Allowed duration before killing suricata process (defaults to None preserve previous behavior)
     pub close_grace_period: Option<Duration>,
-    /// Path where suricata ipc plugin resides at, defaults to /usr/lib/ipc-plugin.so, can be
-    /// overridden with environment variable SURICATA_IPC_PLUGIN
-    pub ipc_plugin: PathBuf,
-    /// How many packets to wait for before allowing suricata to process
-    pub ipc_allocation_batch: usize,
-    /// How many connections to make to suricata via ipc
-    pub ipc_servers: usize,
+    /// IPC plugin
+    pub ipc_plugin: IpcPluginConfig,
+    /// Plugins to attempt to load
+    pub plugins: Vec<Box<dyn Plugin + Send + Sync>>,
 }
 
 impl Default for Config {
     fn default() -> Self {
+        let log_dir = if let Ok(s) = std::env::var("SURICATA_LOG_DIR") {
+            PathBuf::from(s)
+        } else {
+            PathBuf::from("/var/log/suricata")
+        };
         Config {
-            enable_stats: true,
-            enable_flows: true,
-            enable_dns: false,
-            enable_smtp: false,
-            enable_http: false,
-            http_config: HttpConfig::default(),
-            enable_tls: false,
+            runmode: Runmode::AutoFp,
+            outputs: vec![
+                Box::new(output::Alert::new(eve::EveConfiguration::uds(
+                    log_dir.join("alert.socket"),
+                ))),
+                Box::new(output::Flow::new(eve::EveConfiguration::uds(
+                    log_dir.join("flow.socket"),
+                ))),
+                Box::new(output::Http::new(eve::EveConfiguration::uds(
+                    log_dir.join("http.socket"),
+                ))),
+                Box::new(output::Dns::new(eve::EveConfiguration::uds(
+                    log_dir.join("dns.socket"),
+                ))),
+                Box::new(output::Stats::new(eve::EveConfiguration::uds(
+                    log_dir.join("stats.socket"),
+                ))),
+            ],
             enable_community_id: true,
             materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
             exe_path: {
@@ -282,7 +152,6 @@ impl Default for Config {
                     PathBuf::from("/usr/local/bin/suricata")
                 }
             },
-            eve: EveConfiguration::default(),
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
             suricata_config_path: {
                 if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
@@ -299,106 +168,18 @@ impl Default for Config {
                 String::from("192.168.0.0/16"),
                 String::from("169.254.0.0/16"),
             ]),
-            max_pending_packets: 800,
+            max_pending_packets: 2_500,
             buffer_size: None,
-            live: true,
-            default_log_dir: {
-                if let Some(e) = std::env::var_os("SURICATA_LOG_DIR").map(|s| PathBuf::from(s)) {
-                    e
-                } else {
-                    PathBuf::from("/var/log/suricata")
-                }
-            },
-            readers: vec![],
+            default_log_dir: log_dir,
+            ipc_plugin: IpcPluginConfig::default(),
             plugins: vec![],
             close_grace_period: None,
-            ipc_plugin: {
-                if let Some(e) = std::env::var_os("SURICATA_IPC_PLUGIN").map(PathBuf::from) {
-                    e
-                } else {
-                    PathBuf::from("/usr/lib/ipc-plugin.so")
-                }
-            },
-            ipc_allocation_batch: 100,
-            ipc_servers: 1,
         }
     }
-}
-
-fn uds_to_reader(mut uds: Uds, mt: ReaderMessageType) -> Result<Reader, Error> {
-    let path = uds.path;
-    let listener = if !uds.external_listener {
-        if path.exists() {
-            std::fs::remove_file(&path).map_err(Error::from)?;
-        }
-        debug!("Listening to {:?} for event type {:?}", path, mt);
-        let listener = std::os::unix::net::UnixListener::bind(path.clone()).map_err(Error::from)?;
-        Listener::Uds(UdsListener {
-            listener: listener,
-            path: path.clone(),
-        })
-    } else {
-        Listener::External
-    };
-    uds.path = path;
-    Ok(Reader {
-        eve: EveConfiguration::Uds(uds),
-        listener: listener,
-        message: mt,
-    })
 }
 
 impl Config {
-    fn add_if_missing(&self, readers: &mut Vec<ConfigReader>, message_type: ReaderMessageType) {
-        let message_type_discriminant = std::mem::discriminant(&message_type);
-        if readers
-            .iter()
-            .find(|r| std::mem::discriminant(&r.message) == message_type_discriminant)
-            .is_none()
-        {
-            let mut eve = self.eve.clone();
-            if let EveConfiguration::Uds(uds) = &mut eve {
-                uds.path = uds.path.join(format!("{}.socket", message_type));
-            }
-
-            readers.push(ConfigReader {
-                eve: eve,
-                message: message_type,
-            });
-        }
-    }
-
-    pub fn config_readers(&self) -> Vec<ConfigReader> {
-        let mut readers = self.readers.iter().map(|r| r.clone()).collect();
-
-        self.add_if_missing(&mut readers, ReaderMessageType::Alert);
-
-        if self.enable_dns {
-            self.add_if_missing(&mut readers, ReaderMessageType::Dns);
-        }
-        if self.enable_flows {
-            self.add_if_missing(&mut readers, ReaderMessageType::Flow);
-        }
-        if self.enable_http {
-            self.add_if_missing(
-                &mut readers,
-                ReaderMessageType::Http(self.http_config.clone()),
-            );
-        }
-        if self.enable_smtp {
-            self.add_if_missing(&mut readers, ReaderMessageType::Smtp);
-        }
-        if self.enable_stats {
-            self.add_if_missing(&mut readers, ReaderMessageType::Stats);
-        }
-        if self.enable_tls {
-            self.add_if_missing(&mut readers, ReaderMessageType::Tls);
-        }
-
-        readers
-    }
-
-    fn render<'a>(&'a self, config_readers: &'a Vec<ConfigReader>) -> Result<String, Error> {
+    fn render<'a>(&'a self, ipc_plugin: IpcPlugin) -> Result<String, Error> {
         let rules = self.rule_path.to_string_lossy().to_owned();
         let suricata_config_path = self.suricata_config_path.to_string_lossy().to_owned();
         let internal_ips = &self.internal_ips;
@@ -409,37 +190,50 @@ impl Config {
         };
         let default_log_dir = self.default_log_dir.to_string_lossy();
         let max_pending_packets = format!("{}", self.max_pending_packets);
-
+        let outputs = self
+            .outputs
+            .iter()
+            .map(|o| RenderedOutput {
+                connection: o.eve().render(&o.output_type()),
+                types: o.render_messages(),
+            })
+            .collect();
         let plugins = self
             .plugins
             .iter()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| RenderedPlugin {
+                path: p.path().to_string_lossy(),
+                config: p.config().unwrap_or_else(|| "".into()),
+            })
             .collect();
 
         let template = ConfigTemplate {
+            runmode: self.runmode.clone(),
             rules: &rules,
-            readers: config_readers,
             community_id: &community_id,
             suricata_config_path: &suricata_config_path,
             internal_ips: internal_ips,
             max_pending_packets: &max_pending_packets,
-            live: self.live,
             default_log_dir: default_log_dir,
-            plugins: &plugins,
+            outputs: outputs,
+            ipc_plugin: RenderedIpcPlugin {
+                path: ipc_plugin.path.to_string_lossy(),
+                config: ipc_plugin.render().unwrap(),
+            },
+            plugins: plugins,
         };
 
         debug!("Attempting to render");
-        Ok(template.render().map_err(Error::from)?)
+        template.render().map_err(Error::from)
     }
 
-    pub fn materialize<'a>(&'a self) -> Result<Vec<ConfigReader>, Error> {
-        let config_readers = self.config_readers();
-        let rendered = self.render(&config_readers)?;
+    pub fn materialize(&self, ipc_plugin: IpcPlugin) -> Result<(), Error> {
+        let rendered = self.render(ipc_plugin)?;
         debug!("Writing output.yaml to {:?}", self.materialize_config_to);
         let mut f = std::fs::File::create(&self.materialize_config_to).map_err(Error::Io)?;
         f.write(rendered.as_bytes()).map_err(Error::from)?;
         debug!("Output file written");
-        Ok(config_readers)
+        Ok(())
     }
 }
 
@@ -466,15 +260,17 @@ mod tests {
 
     fn get_reader_sections(readers: Vec<ConfigReader>) -> Vec<String> {
         let config = Config {
-            enable_stats: false,
-            enable_flows: false,
-            readers: readers,
             ..Config::default()
         };
 
-        let config_readers = config.config_readers();
+        let ipc_plugin = IpcPlugin {
+            path: PathBuf("/tmp"),
+            servers: "ipc-server".to_string(),
+            allocation_batch_size: 1_000,
+            live: true,
+        };
 
-        let rendered = config.render(&config_readers).unwrap();
+        let rendered = config.render(ipc_plugin).unwrap();
 
         let mut result = vec![];
 

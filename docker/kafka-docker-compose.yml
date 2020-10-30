@@ -1,0 +1,50 @@
+version: "3.7"
+services:
+  zookeeper:
+    container_name: zookeeper_${CI_JOB_ID:-suricata-ipc}
+    image: confluentinc/cp-zookeeper:5.2.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - compose_suricata_ipc
+    expose:
+      - "2181"
+  kafka:
+    container_name: kafka_${CI_JOB_ID:-suricata-ipc}
+    image: confluentinc/cp-kafka:5.2.1
+    environment:
+      KAFKA_BROKER_ID: 0
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_HOST:-localhost}:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_NUM_PARTITIONS: 3
+      CONFLUENT_SUPPORT_METRICS_ENABLE: 0
+    depends_on:
+      - zookeeper
+    networks:
+      - compose_suricata_ipc
+    ports:
+      - "9092:9092"
+  suricata-ipc:
+    image: "${IMAGE_ID:-suricata-ipc}"
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+      args:
+        - RUST_VERSION=${RUST_VERSION:-stable}
+        - TARGET=${TARGET:-run}
+    environment:
+      KAFKA_CONNECT: "kafka:9092"
+    entrypoint: /bin/bash
+    command: ./wait-for-it.sh kafka:9092 -t 360 -- cargo test --release --features "kafka-plugin-tests" -p kafka_plugin_tests
+    container_name: suricata-rs_${CI_JOB_ID:-suricata-ipc}
+    networks:
+      - compose_suricata_ipc
+    depends_on:
+      - zookeeper
+      - kafka
+
+networks:
+  compose_suricata_ipc:
+    driver: bridge
+

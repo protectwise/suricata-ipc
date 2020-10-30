@@ -55,7 +55,7 @@
 //! }
 //! ```
 #![deny(unused_must_use, unused_imports, bare_trait_objects)]
-mod config;
+pub mod config;
 mod errors;
 mod eve;
 mod intel;
@@ -64,10 +64,7 @@ mod intel;
 mod serde_helpers;
 
 pub mod prelude {
-    pub use super::config::{
-        Config, ConfigReader, Custom, CustomOption, DumpAllHeaders, EveConfiguration, HttpConfig,
-        InternalIps, ReaderMessageType, Redis, Uds,
-    };
+    pub use super::config::Config;
     pub use super::errors::Error;
     pub use super::eve::*;
     pub use super::intel::{
@@ -109,11 +106,14 @@ pub mod proto {
     }
 }
 
+use crate::config::output::{Output, OutputType};
+use config::Config;
 use log::*;
 use prelude::*;
 use smol::future::{or, FutureExt};
 use smol::io::AsyncBufReadExt;
 use smol::stream::StreamExt;
+use std::path::PathBuf;
 use std::time::Duration;
 
 //const READER_BUFFER_SIZE: usize = 128;
@@ -170,17 +170,19 @@ impl<'a, M> Ids<'a, M> {
         packets: &'b [T],
         server_id: usize,
     ) -> Result<usize, Error> {
-        let server = self
-            .ipc_servers
-            .get(server_id)
-            .ok_or(Error::MissingServerId(server_id))?;
-        let packets_sent = packets.len();
-        server.send(packets).map_err(Error::PacketIpc)?;
-        Ok(packets_sent)
+        if let Some(ipc_server) = self.ipc_servers.get(server_id) {
+            let packets_sent = packets.len();
+            ipc_server.send(packets).map_err(Error::PacketIpc)?;
+            Ok(packets_sent)
+        } else {
+            Err(Error::Custom {
+                msg: "Cannot send when Ids already closed.".to_string(),
+            })
+        }
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
-        for server in self.ipc_servers.iter_mut() {
+        for mut server in self.ipc_servers.drain(..) {
             server.close().map_err(Error::PacketIpc)?
         }
         Ok(())
@@ -202,78 +204,30 @@ impl<'a, M> Ids<'a, M> {
     where
         M: Send + 'static,
     {
-        if (args.max_pending_packets as usize) < args.ipc_allocation_batch {
+        if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {
                 msg: "Max pending packets must be larger than IPC allocation batch".into(),
             });
         }
 
         let close_grace_period = args.close_grace_period.clone();
-
-        //need a one shot server name to give to suricata
-        debug!("Starting {} IPC servers", args.ipc_servers);
-        let servers: Result<Vec<packet_ipc::Server<'a>>, Error> = (0..args.ipc_servers)
-            .into_iter()
-            .map(|_| {
-                let ipc_server_result = packet_ipc::Server::new().map_err(Error::from);
-                if let Ok(ref ipc_server) = ipc_server_result {
-                    debug!("Started IPC server at: {:?}", ipc_server.name());
-                } else {
-                    error!("Failed to start IPC server");
-                }
-                ipc_server_result
-            })
-            .collect();
-
-        let servers = servers?;
-        debug!("Begin materialize");
-        let config_readers = args.materialize()?;
-
         let opt_size = args.buffer_size.clone();
 
-        let connection_tasks: Result<Vec<_>, Error> = config_readers
+        let connection_tasks: Vec<_> = args
+            .outputs
             .iter()
-            .flat_map(|c| {
-                let reader = match c.create_reader() {
-                    Ok(reader) => reader,
-                    Err(e) => return Some(Err(e)),
-                };
-
-                if let crate::config::Listener::Uds(l) = reader.listener {
-                    let message = reader.message;
-                    let path = l.path;
-                    debug!(
-                        "Spawning acceptor for uds connection from suricata for {:?}",
-                        path
-                    );
-                    match smol::Async::new(l.listener).map_err(Error::from) {
-                        Err(e) => Some(Err(e)),
-                        Ok(listener) => {
-                            let f = smol::spawn(async move {
-                                listener.accept().await.map_err(Error::from).map(|t| {
-                                    let (uds_connection, uds_addr) = t;
-
-                                    debug!("UDS connection formed from {:?}", uds_addr);
-
-                                    if let Some(sz) = opt_size {
-                                        EveReader::with_capacity(path, message, uds_connection, sz)
-                                    } else {
-                                        EveReader::new(path, message, uds_connection)
-                                    }
-                                })
-                            });
-                            Some(Ok(f))
-                        }
-                    }
-                } else {
-                    None
-                }
-            })
+            .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
             .collect();
-        let connection_tasks = connection_tasks?;
         debug!("Readers are listening, starting suricata");
-        let server_names = servers.iter().map(|s| s.name().clone()).collect();
-        let mut process = Self::spawn_suricata(args, server_names)?;
+
+        let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
+        args.materialize(ipc_plugin)?;
+
+        let pending_ipc_connections = servers
+            .into_iter()
+            .map(|s| smol::spawn(async move { s.accept() }));
+
+        let mut process = Self::spawn_suricata(&args)?;
 
         let stdout_complete = {
             let o = process.stdout.take().unwrap();
@@ -306,17 +260,31 @@ impl<'a, M> Ids<'a, M> {
         .boxed();
 
         smol::spawn(lines).detach();
-        let mut connected_ipcs = vec![];
-        for server in servers {
-            let connected_ipc = smol::block_on(async move { server.accept() })?;
-            connected_ipcs.push(connected_ipc);
+
+        let connected_ipcs = async move {
+            let mut ipcs = Vec::with_capacity(pending_ipc_connections.len());
+            for ipc in pending_ipc_connections {
+                ipcs.push(ipc.await);
+            }
+            let ipcs: Result<Vec<_>, _> = ipcs.into_iter().collect();
+            ipcs
         }
+        .await?;
 
         debug!("IPC Connection formed");
 
-        let mut readers = Vec::with_capacity(connection_tasks.len());
-        for future_connection in connection_tasks.into_iter() {
-            readers.push(future_connection.await?);
+        let readers = async move {
+            let mut readers = Vec::with_capacity(connection_tasks.len());
+            for connection in connection_tasks {
+                readers.push(connection.await);
+            }
+            let readers: Result<Vec<_>, _> = readers.into_iter().collect();
+            readers
+        }
+        .await?;
+
+        if !readers.is_empty() {
+            debug!("{} Eve Readers connected", readers.len());
         }
 
         Ok(Ids {
@@ -327,31 +295,17 @@ impl<'a, M> Ids<'a, M> {
         })
     }
 
-    fn spawn_suricata(
-        args: Config,
-        server_names: Vec<String>,
-    ) -> Result<std::process::Child, Error> {
+    fn spawn_suricata(args: &Config) -> Result<std::process::Child, Error> {
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
-        let server_args: Vec<String> = {
-            let mut base_args: Vec<String> = vec![
-                "-c",
-                args.materialize_config_to.to_str().unwrap(),
-                "--set",
-                &format!("plugins.0={}", args.ipc_plugin.to_string_lossy()),
-                "--capture-plugin=ipc-plugin",
-                "--set",
-                &format!("ipc.allocation-batch={}", args.ipc_allocation_batch),
-            ]
-            .into_iter()
-            .map(|s| String::from(s))
-            .collect();
+        let server_args: Vec<String> = vec![
+            "-c",
+            args.materialize_config_to.to_str().unwrap(),
+            "--capture-plugin=ipc-plugin",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
 
-            let concat_server = server_names.join(",");
-            let server_args = vec!["--set".to_string(), format!("ipc.server={}", concat_server)];
-
-            base_args.extend(server_args);
-            base_args
-        };
         command
             .args(server_args)
             .stdin(std::process::Stdio::null())
@@ -360,4 +314,52 @@ impl<'a, M> Ids<'a, M> {
         info!("Spawning {:?}", command);
         command.spawn().map_err(Error::Io)
     }
+}
+
+fn connect_output<M: Send + 'static>(
+    output: &Box<dyn Output + Send + Sync>,
+    opt_size: Option<usize>,
+) -> Option<smol::Task<Result<EveReader<M>, Error>>> {
+    if let Some(path) = output.eve().listener(&output.output_type()) {
+        let r = match connect_uds(path, output.output_type().clone(), opt_size) {
+            Err(e) => smol::spawn(async move { Err(e) }),
+            Ok(t) => t,
+        };
+        Some(r)
+    } else {
+        None
+    }
+}
+
+fn connect_uds<M: Send + 'static>(
+    path: PathBuf,
+    output_type: OutputType,
+    opt_size: Option<usize>,
+) -> Result<smol::Task<Result<EveReader<M>, Error>>, Error> {
+    debug!(
+        "Spawning acceptor for uds connection from suricata for {:?}",
+        path
+    );
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    debug!("Listening to {:?} for event type {:?}", path, output_type);
+    let listener = std::os::unix::net::UnixListener::bind(path.clone()).map_err(Error::from)?;
+    let r = match smol::Async::new(listener).map_err(Error::from) {
+        Err(e) => smol::spawn(async move { Err(e) }),
+        Ok(listener) => smol::spawn(async move {
+            listener.accept().await.map_err(Error::from).map(|t| {
+                let (uds_connection, uds_addr) = t;
+
+                debug!("UDS connection formed from {:?}", uds_addr);
+
+                if let Some(sz) = opt_size {
+                    EveReader::with_capacity(path, output_type, uds_connection, sz)
+                } else {
+                    EveReader::new(path, output_type, uds_connection)
+                }
+            })
+        }),
+    };
+    Ok(r)
 }

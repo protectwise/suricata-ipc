@@ -1,0 +1,27 @@
+        {% if extended %}
+            extended: yes     # enable this for extended logging information
+        {% else %}
+            #extended: yes     # enable this for extended logging information
+        {% endif %}
+            # custom allows additional HTTP fields to be included in eve-log.
+            # the example below adds three additional fields when uncommented
+        {% if custom.len() == 0 %}
+            #custom: [Accept-Encoding, Accept-Language, Authorization]
+        {% else %}
+            custom: [{{ custom|join(", ") }}]
+        {% endif %}
+            # set this value to one and only one from {both, request, response}
+            # to dump all HTTP headers for every HTTP request and/or response
+        {% match dump_all_headers %}
+          {% when Some with (dump_all_headers) %}
+            {% match dump_all_headers %}
+              {% when DumpAllHeaders::Both %}
+            dump-all-headers: both
+              {% when DumpAllHeaders::Request %}
+            dump-all-headers: request
+              {% when DumpAllHeaders::Response %}
+            dump-all-headers: response
+            {% endmatch %}
+          {% when None %}
+            #dump-all-headers: both
+        {% endmatch %}

@@ -100,7 +100,7 @@ ENV SURICATA_EXE=/usr/bin/suricata \
 
 FROM build-suricata AS development
 
-ENV RUST_LOG=suricata_rs=debug \
+ENV RUST_LOG=suricata_ipc=debug \
     SURICATA_EXE=/usr/bin/suricata \
     SURICATA_CONFIG_DIR=/usr/etc/suricata \
     SURICATA_LOG_DIR=/tmp \
@@ -132,6 +132,8 @@ FROM build-plugin AS build
 WORKDIR /development
 
 ADD /benches benches
+ADD /cmake cmake
+ADD /kafka-plugin kafka-plugin
 ADD /resources resources
 ADD /src src
 ADD /templates templates
@@ -141,6 +143,15 @@ ADD /Cargo.toml Cargo.toml
 RUN cargo fmt --all -- --check
 
 RUN cargo build --release --manifest-path=Cargo.toml
+
+WORKDIR /development/kafka-plugin
+
+RUN cmake -S . -B build \
+  && cd build \
+  && make \
+  && make install
+
+RUN mkdir /tmp
 
 FROM build AS test
 
