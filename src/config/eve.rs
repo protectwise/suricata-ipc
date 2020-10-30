@@ -74,9 +74,10 @@ struct CustomRenderer<'a> {
 
 pub fn render_custom<T: Custom>(custom: &T, output_type: &OutputType) -> String {
     let listener = custom.listener(output_type);
+    let options = custom.options(output_type);
     CustomRenderer {
         name: custom.name(),
-        options: custom.options(),
+        options: &options,
         path: listener.as_ref().map(|p| p.to_string_lossy()),
     }
     .render()
@@ -85,7 +86,7 @@ pub fn render_custom<T: Custom>(custom: &T, output_type: &OutputType) -> String 
 
 pub trait Custom {
     fn name(&self) -> &str;
-    fn options(&self) -> &std::collections::HashMap<String, String>;
+    fn options(&self, output_type: &OutputType) -> std::collections::HashMap<String, String>;
     fn listener(&self, output_type: &OutputType) -> Option<PathBuf>;
     fn render(&self, output_type: &OutputType) -> String;
 }
