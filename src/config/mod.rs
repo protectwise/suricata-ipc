@@ -241,8 +241,7 @@ impl Config {
 mod tests {
     use super::*;
 
-    use std::path::Path;
-
+    use crate::config::output::OutputType;
     use crate::config::InternalIps;
 
     #[test]
@@ -258,323 +257,150 @@ mod tests {
         assert_eq!(format!("{}", internal_ips), "169.254.0.0/16,192.168.0.0/16,fc00:0:0:0:0:0:0:0/7,127.0.0.1/32,10.0.0.0/8,172.16.0.0/12");
     }
 
-    fn get_reader_sections(readers: Vec<ConfigReader>) -> Vec<String> {
-        let config = Config {
-            ..Config::default()
-        };
-
-        let ipc_plugin = IpcPlugin {
-            path: PathBuf("/tmp"),
-            servers: "ipc-server".to_string(),
-            allocation_batch_size: 1_000,
+    fn ipc_plugin() -> IpcPlugin {
+        let cfg = IpcPluginConfig {
+            path: PathBuf::from("ipc-plugin.so"),
+            allocation_batch_size: 100,
+            servers: 1,
             live: true,
         };
-
-        let rendered = config.render(ipc_plugin).unwrap();
-
-        let mut result = vec![];
-
-        let mut outputs_section: String = rendered
-            .chars()
-            .skip(rendered.find("outputs:\n").unwrap())
-            .collect();
-
-        let eve_log = "  - eve-log:\n";
-
-        match outputs_section.find(eve_log) {
-            Some(index) => {
-                outputs_section = outputs_section
-                    .chars()
-                    .skip(index + eve_log.len())
-                    .collect()
-            }
-            None => return result,
-        };
-
-        while let Some(split_index) = outputs_section.find(eve_log) {
-            result.push(outputs_section.chars().take(split_index).collect());
-            outputs_section = outputs_section
-                .chars()
-                .skip(split_index + eve_log.len())
-                .collect();
-        }
-
-        result.push(
-            outputs_section
-                .chars()
-                .take(outputs_section.find("  - http-log:").unwrap())
-                .collect(),
-        );
-
-        result
-    }
-
-    fn get_http_section(http_config: HttpConfig) -> String {
-        let config = Config {
-            enable_http: true,
-            http_config: http_config,
-            enable_smtp: true,
-            ..Config::default()
-        };
-        let rendered = config.render(&config.config_readers()).unwrap();
-
-        // Start w/ - http: (unique within template)
-        let mut http_section: String = rendered
-            .chars()
-            .skip(rendered.find("- http:").unwrap())
-            .collect();
-
-        // End w/ dns segment start
-        http_section = http_section
-            .chars()
-            .take(http_section.find(" - smtp\n").unwrap())
-            .collect();
-
-        http_section
-    }
-
-    fn get_plugins_section<P: AsRef<Path>>(plugins: Vec<P>) -> Option<String> {
-        let config = Config {
-            plugins: plugins.into_iter().map(|p| p.as_ref().into()).collect(),
-            ..Config::default()
-        };
-        let rendered = config.render(&config.config_readers()).unwrap();
-
-        let plugins = "plugins:";
-
-        rendered
-            .find(plugins)
-            .map(|index| index - plugins.len())
-            .map(|to_skip| rendered.chars().skip(to_skip).collect())
-    }
-
-    #[test]
-    fn test_no_readers() {
-        let sections = get_reader_sections(vec![]);
-
-        // Alert is always added
-        assert_eq!(1, sections.len());
-        assert!(sections[0].find("        - alert\n").is_some());
+        let (plugin, _) = cfg.into_plugin().unwrap();
+        plugin
     }
 
     #[test]
     fn test_alert_redis() {
-        let sections = get_reader_sections(vec![ConfigReader {
-            eve: EveConfiguration::Redis(Redis::default()),
-            message: ReaderMessageType::Alert,
-        }]);
+        let eve_config = || {
+            eve::EveConfiguration::Redis(eve::Redis {
+                server: "redis://test".into(),
+                port: 6379,
+            })
+        };
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> =
+            vec![Box::new(output::Alert::new(eve_config()))];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(1, sections.len());
-        assert!(sections[0].find("        - alert\n").is_some());
-        assert!(sections[0].find("      filetype: redis\n").is_some());
+        let regex = regex::Regex::new(
+            r#"filetype: redis\s*[\r\n]\s*redis:\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]\s*- alert"#,
+        )
+        .unwrap();
+
+        assert!(regex.find(&rendered).is_some());
     }
 
     #[test]
     fn test_alert_uds() {
-        let sections = get_reader_sections(vec![ConfigReader {
-            eve: EveConfiguration::Uds(Uds::default()),
-            message: ReaderMessageType::Alert,
-        }]);
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> =
+            vec![Box::new(output::Alert::new(eve_config()))];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(1, sections.len());
-        assert!(sections[0].find("        - alert\n").is_some());
-        assert!(sections[0].find("      filetype: unix_stream\n").is_some());
+        let regex = regex::Regex::new(
+            r#"filetype:\s+unix_stream\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- alert"#,
+        )
+        .unwrap();
+
+        assert!(regex.find(&rendered).is_some());
+    }
+
+    struct Custom {
+        uds: Option<PathBuf>,
+    }
+
+    impl eve::Custom for Custom {
+        fn name(&self) -> &str {
+            "custom"
+        }
+        fn options(&self, _output_type: &OutputType) -> std::collections::HashMap<String, String> {
+            let mut m = std::collections::HashMap::default();
+            m.insert("test-name".into(), "test-key".into());
+            m
+        }
+        fn listener(&self, _output_type: &OutputType) -> Option<PathBuf> {
+            self.uds.clone()
+        }
+        fn render(&self, output_type: &OutputType) -> String {
+            eve::render_custom(self, output_type)
+        }
     }
 
     #[test]
     fn test_alert_custom_non_uds() {
-        let sections = get_reader_sections(vec![ConfigReader {
-            eve: EveConfiguration::Custom(Custom {
-                name: "test-name".to_string(),
-                options: vec![CustomOption {
-                    key: "test-key".to_string(),
-                    value: "test-value".to_string(),
-                }],
-                uds: None,
-            }),
-            message: ReaderMessageType::Alert,
-        }]);
+        let eve_config = || eve::EveConfiguration::Custom(Box::new(Custom { uds: None }));
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> =
+            vec![Box::new(output::Alert::new(eve_config()))];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(1, sections.len());
-        assert!(sections[0].find("        - alert\n").is_some());
-        assert!(sections[0].find("      filetype: test-name\n").is_some());
-        assert!(sections[0].find("        test-key: test-value\n").is_some());
+        let regex = regex::Regex::new(r#"filetype:\s+custom\s*[\r\n]\s*custom:\s*[\r\n]*\s*test-name: test-key\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- alert"#).unwrap();
+
+        assert!(regex.find(&rendered).is_some());
     }
 
     #[test]
     fn test_alert_custom_uds() {
-        let sections = get_reader_sections(vec![ConfigReader {
-            eve: EveConfiguration::Custom(Custom {
-                name: "test-name".to_string(),
-                options: vec![CustomOption {
-                    key: "test-key".to_string(),
-                    value: "test-value".to_string(),
-                }],
-                uds: Some(Uds {
-                    path: "/test/path".into(),
-                    ..Uds::default()
-                }),
-            }),
-            message: ReaderMessageType::Alert,
-        }]);
+        let eve_config = || {
+            eve::EveConfiguration::Custom(Box::new(Custom {
+                uds: Some(PathBuf::from("test.path")),
+            }))
+        };
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> =
+            vec![Box::new(output::Alert::new(eve_config()))];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(1, sections.len());
-        assert!(sections[0].find("        - alert\n").is_some());
-        assert!(sections[0].find("      filetype: test-name\n").is_some());
-        assert!(sections[0].find("        test-key: test-value\n").is_some());
-        assert!(sections[0].find("        filename: /test/path\n").is_some());
+        let regex = regex::Regex::new(r#"filetype:\s+custom\s*[\r\n]\s*custom:\s*[\r\n]\s*filename:\s+test.path\s*[\r\n]\s*test-name: test-key\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- alert"#).unwrap();
+
+        assert!(regex.find(&rendered).is_some());
     }
 
     #[test]
-    fn test_dns_redis() {
-        let sections = get_reader_sections(vec![ConfigReader {
-            eve: EveConfiguration::Redis(Redis::default()),
-            message: ReaderMessageType::Dns,
-        }]);
+    fn test_dns_uds() {
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> =
+            vec![Box::new(output::Dns::new(eve_config()))];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(2, sections.len());
-        assert!(sections[0].find("        - dns\n").is_some());
-        assert!(sections[0].find("      filetype: redis\n").is_some());
-        assert!(sections[1].find("        - alert\n").is_some());
-        assert!(sections[1].find("      filetype: unix_stream\n").is_some());
+        let regex = regex::Regex::new(r#"filetype:\s+unix_stream\s*[\r\n]\s*filename: test\.socket.Dns\.socket\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- dns"#).unwrap();
+
+        assert!(regex.find(&rendered).is_some());
     }
 
     #[test]
     fn test_default_http() {
-        let rendered = get_http_section(HttpConfig::default());
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> =
+            vec![Box::new(output::Http::new(eve_config()))];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(true, rendered.contains("#extended: yes"));
-        assert_eq!(false, rendered.contains(" extended: yes"));
+        let regex = regex::Regex::new(r#"filetype:\s+unix_stream\s*[\r\n]\s*filename: test\.socket.Http\.socket\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- http:"#).unwrap();
 
-        assert_eq!(
-            true,
-            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
-        );
-        assert_eq!(false, rendered.contains(" custom: ["));
-
-        assert_eq!(true, rendered.contains(" dump-all-headers: both"));
-        assert_eq!(false, rendered.contains("#dump-all-headers: "));
-    }
-
-    #[test]
-    fn test_extended_http() {
-        let rendered = get_http_section(HttpConfig {
-            extended: true,
-            ..HttpConfig::default()
-        });
-
-        assert_eq!(false, rendered.contains("#extended: yes"));
-        assert_eq!(true, rendered.contains(" extended: yes"));
-
-        assert_eq!(
-            true,
-            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
-        );
-        assert_eq!(false, rendered.contains(" custom: ["));
-
-        assert_eq!(true, rendered.contains(" dump-all-headers: both"));
-        assert_eq!(false, rendered.contains("#dump-all-headers: "));
+        assert!(regex.find(&rendered).is_some());
     }
 
     #[test]
     fn test_custom_http() {
-        let rendered = get_http_section(HttpConfig {
-            custom: vec!["Accept-Encoding".to_string(), "Accept-Language".to_string()],
-            ..HttpConfig::default()
-        });
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let mut http = output::Http::new(eve_config());
+        http.extended = true;
+        http.custom = vec!["Accept-Encoding".to_string()];
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let mut cfg = Config::default();
+        cfg.outputs = outputs;
+        let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        assert_eq!(true, rendered.contains("#extended: yes"));
-        assert_eq!(false, rendered.contains(" extended: yes"));
+        let regex = regex::Regex::new(r#"filetype:\s+unix_stream\s*[\r\n]\s*filename: test.socket.Http.socket\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- http:\s*(.*[\r\n])*\s*extended: yes\s*(.*[\r\n])*\s*custom: \[Accept\-Encoding\]"#).unwrap();
 
-        assert_eq!(
-            false,
-            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
-        );
-        assert_eq!(
-            true,
-            rendered.contains(" custom: [Accept-Encoding, Accept-Language]")
-        );
-
-        assert_eq!(true, rendered.contains(" dump-all-headers: both"));
-        assert_eq!(false, rendered.contains("#dump-all-headers: "));
-    }
-
-    #[test]
-    fn test_dump_request_http() {
-        let rendered = get_http_section(HttpConfig {
-            dump_all_headers: Some(DumpAllHeaders::Request),
-            ..HttpConfig::default()
-        });
-
-        assert_eq!(true, rendered.contains("#extended: yes"));
-        assert_eq!(false, rendered.contains(" extended: yes"));
-
-        assert_eq!(
-            true,
-            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
-        );
-        assert_eq!(false, rendered.contains(" custom: ["));
-
-        assert_eq!(true, rendered.contains(" dump-all-headers: request"));
-        assert_eq!(false, rendered.contains("#dump-all-headers: "));
-    }
-
-    #[test]
-    fn test_dump_response_http() {
-        let rendered = get_http_section(HttpConfig {
-            dump_all_headers: Some(DumpAllHeaders::Response),
-            ..HttpConfig::default()
-        });
-
-        assert_eq!(true, rendered.contains("#extended: yes"));
-        assert_eq!(false, rendered.contains(" extended: yes"));
-
-        assert_eq!(
-            true,
-            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
-        );
-        assert_eq!(false, rendered.contains(" custom: ["));
-
-        assert_eq!(true, rendered.contains(" dump-all-headers: response"));
-        assert_eq!(false, rendered.contains("#dump-all-headers: "));
-    }
-
-    #[test]
-    fn test_dump_none_http() {
-        let rendered = get_http_section(HttpConfig {
-            dump_all_headers: None,
-            ..HttpConfig::default()
-        });
-
-        assert_eq!(true, rendered.contains("#extended: yes"));
-        assert_eq!(false, rendered.contains(" extended: yes"));
-
-        assert_eq!(
-            true,
-            rendered.contains("#custom: [Accept-Encoding, Accept-Language, Authorization]")
-        );
-        assert_eq!(false, rendered.contains(" custom: ["));
-
-        assert_eq!(false, rendered.contains(" dump-all-headers:"));
-        assert_eq!(true, rendered.contains("#dump-all-headers: both"));
-    }
-
-    #[test]
-    fn test_no_plugins() {
-        assert_eq!(None, get_plugins_section::<String>(vec![]));
-    }
-
-    #[test]
-    fn test_single_plugin() {
-        assert!(get_plugins_section(vec!["/test/path"])
-            .unwrap()
-            .contains("  - /test/path"));
-    }
-
-    #[test]
-    fn test_two_plugins() {
-        let plugins_section = get_plugins_section(vec!["/test/path", "test/path/two"]).unwrap();
-        assert!(plugins_section.contains("  - /test/path"));
-        assert!(plugins_section.contains("  - test/path/two"));
+        assert!(regex.find(&rendered).is_some());
     }
 }

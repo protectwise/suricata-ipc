@@ -171,7 +171,7 @@ mod tests {
 
         let client = smol::Async::new(client).unwrap();
         let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::block_on(
-            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+            EveReader::new(PathBuf::default(), OutputType::Alert, client).try_collect(),
         );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
@@ -207,7 +207,7 @@ mod tests {
 
         let client = smol::Async::new(client).unwrap();
         let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::block_on(
-            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+            EveReader::new(PathBuf::default(), OutputType::Alert, client).try_collect(),
         );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
@@ -237,7 +237,7 @@ mod tests {
 
         let client = smol::Async::new(client).unwrap();
         let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::block_on(
-            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+            EveReader::new(PathBuf::default(), OutputType::Alert, client).try_collect(),
         );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
@@ -271,7 +271,7 @@ mod tests {
 
         let client = smol::Async::new(client).unwrap();
         let alerts: Result<Vec<Vec<EveMessage>>, Error> = smol::block_on(
-            EveReader::new(PathBuf::default(), ReaderMessageType::Alert, client).try_collect(),
+            EveReader::new(PathBuf::default(), OutputType::Alert, client).try_collect(),
         );
         let alerts: Vec<_> = alerts.unwrap().into_iter().flat_map(|v| v).collect();
 
