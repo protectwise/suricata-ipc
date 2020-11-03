@@ -1,3 +1,4 @@
+    - http:
         {% if extended %}
             extended: yes     # enable this for extended logging information
         {% else %}
