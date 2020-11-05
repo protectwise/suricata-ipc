@@ -719,7 +719,7 @@ stream:
   checksum-validation: no      # reject incorrect csums
   inline: auto                  # auto will use inline mode in IPS mode, yes or no set it statically
   midstream: true
-  async-oneside: true
+  async-oneside: false
   reassembly:
     memcap: 256mb
     depth: 4mb                  # reassemble 1mb into a stream
