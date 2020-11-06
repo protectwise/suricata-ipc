@@ -1,4 +1,5 @@
 use crate::intel::{CachedRule, IdsKey};
+use crate::eve::{EveMessage, EveEventType};
 
 const TRACER_RULE: &'static str = r#"alert udp 10.1.10.39 54999 -> 75.75.75.75 53 (msg:"Tracer Packet 2"; content:"dannysmagictracerpkt|02|pw"; classtype:attempted-user; gid:1; sid:69041501; rev:1;)"#;
 const TRACER_DATA: &'static [u8] = &[
@@ -18,6 +19,15 @@ const TRACER_DATA: &'static [u8] = &[
 pub struct Tracer;
 
 impl Tracer {
+    pub fn eve_is_tracer(eve: &EveMessage) -> bool {
+        if let EveEventType::Alert(ref alert) = eve.event {
+            let key = Self::key();
+            return alert.info.gid == key.gid && alert.info.signature_id == key.sid;
+        }
+
+        false
+    }
+
     pub fn key() -> IdsKey {
         IdsKey {
             gid: 1,
