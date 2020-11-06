@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tls {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
@@ -8,7 +8,7 @@ pub struct Tls {
     pub info: TlsInfo,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TlsInfo {
     pub subject: String,
     pub issuerdn: String,
@@ -25,7 +25,7 @@ pub struct TlsInfo {
     pub ja3: Option<Ja3>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Ja3 {
     pub hash: String,
     pub data: String,

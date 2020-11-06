@@ -23,7 +23,7 @@ use crate::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "event_type")]
 pub enum EventType {
     #[serde(rename = "alert")]
@@ -42,7 +42,7 @@ pub enum EventType {
     Tls(Tls),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Message {
     #[serde(with = "date_format")]
     pub timestamp: DateTime<Utc>,
@@ -60,7 +60,7 @@ pub enum State {
     Closed,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventFields {
     pub src_ip: std::net::IpAddr,
     pub src_port: u16,

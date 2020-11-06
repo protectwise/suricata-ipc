@@ -2,7 +2,7 @@ use crate::eve::message::date_format;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FlowInfo {
     pub age: usize,
     pub pkts_toserver: usize,
@@ -18,7 +18,7 @@ pub struct FlowInfo {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Flow {
     #[serde(flatten)]
     pub event_fields: super::EventFields,

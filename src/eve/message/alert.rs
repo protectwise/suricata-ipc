@@ -2,13 +2,13 @@ use crate::eve::message::date_format;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlertFlowInfo {
     #[serde(with = "date_format")]
     pub start: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlertInfo {
     pub gid: u64,
     pub signature_id: u64,
