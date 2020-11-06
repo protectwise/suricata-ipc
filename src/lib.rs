@@ -221,7 +221,7 @@ impl<'a, M> Ids<'a, M> {
         debug!("Readers are listening, starting suricata");
 
         let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
-        //args.materialize(ipc_plugin)?;
+        args.materialize(ipc_plugin)?;
 
         let pending_ipc_connections = servers
             .into_iter()
