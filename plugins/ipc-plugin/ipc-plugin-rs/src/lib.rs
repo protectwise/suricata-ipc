@@ -1,4 +1,4 @@
-use suricata::{SCLogDebug, SCLogInfo, SCLogNotice};
+use suricata::{SCLogInfo, SCLogNotice};
 
 use packet_ipc::{AsIpcPacket, Client, Packet as IpcPacket};
 use std::sync::Arc;
@@ -23,7 +23,6 @@ extern {
 
 #[no_mangle]
 pub extern "C" fn rs_ipc_release_packet(user: *mut u8) {
-    SCLogInfo!("Releasing ipc packet");
     if user != std::ptr::null_mut() {
         unsafe {
             let packet = std::mem::transmute::<*mut u8, *mut IpcPacket>(user);
@@ -50,8 +49,6 @@ pub extern "C" fn rs_ipc_populate_packets(ipc: *mut IpcClient, packets: *mut *mu
         return -1;
     }
 
-    SCLogDebug!("Populating {} packets", len);
-
     match unsafe { (*ipc).inner.recv(len as usize) } {
         Err(_) => {
             SCLogNotice!("Failed to receive packets in ipc_populate_packets");
@@ -66,7 +63,6 @@ pub extern "C" fn rs_ipc_populate_packets(ipc: *mut IpcClient, packets: *mut *mu
                 SCLogInfo!("IPC connection closed");
                 return 0;
             } else {
-                SCLogDebug!("Received {} packets", ipc_packets.len());
                 let packets_returned = ipc_packets.len();
 
                 if packets_returned > len as usize {

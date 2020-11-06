@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Decoder {
     pub pkts: usize,
     pub bytes: usize,
@@ -18,7 +18,7 @@ pub struct Decoder {
     pub max_pkt_size: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Flow {
     pub tcp: usize,
     pub udp: usize,
@@ -27,7 +27,7 @@ pub struct Flow {
     pub memuse: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Tcp {
     pub sessions: usize,
     pub midstream_pickups: usize,
@@ -36,13 +36,13 @@ pub struct Tcp {
     pub reassembly_memuse: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stats {
     #[serde(rename = "stats")]
     pub info: StatsInfo,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StatsInfo {
     pub uptime: i64,
     pub decoder: Decoder,

@@ -57,6 +57,8 @@ struct ConfigTemplate<'a> {
     default_log_dir: std::borrow::Cow<'a, str>,
     ipc_plugin: RenderedIpcPlugin<'a>,
     plugins: Vec<RenderedPlugin<'a>>,
+    detect_profile: DetectProfile,
+    async_oneside: bool,
 }
 
 /// Runmodes for suricata
@@ -65,6 +67,30 @@ pub enum Runmode {
     Single,
     AutoFp,
     Workers,
+}
+
+/// Detect Profiles
+#[derive(Clone, Debug)]
+pub enum DetectProfile {
+    Low,
+    Medium,
+    High,
+}
+
+impl Default for DetectProfile {
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
+impl std::fmt::Display for DetectProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Low => write!(f, "low"),
+            Self::Medium => write!(f, "medium"),
+            Self::High => write!(f, "high"),
+        }
+    }
 }
 
 impl Default for Runmode {
@@ -115,6 +141,10 @@ pub struct Config {
     pub ipc_plugin: IpcPluginConfig,
     /// Plugins to attempt to load
     pub plugins: Vec<Box<dyn Plugin + Send + Sync>>,
+    /// Detect profile
+    pub detect_profile: DetectProfile,
+    /// async-oneside flow handling
+    pub async_oneside: bool,
 }
 
 impl Default for Config {
@@ -174,6 +204,8 @@ impl Default for Config {
             ipc_plugin: IpcPluginConfig::default(),
             plugins: vec![],
             close_grace_period: None,
+            detect_profile: DetectProfile::Medium,
+            async_oneside: false,
         }
     }
 }
@@ -221,6 +253,8 @@ impl Config {
                 config: ipc_plugin.render().unwrap(),
             },
             plugins: plugins,
+            detect_profile: self.detect_profile.clone(),
+            async_oneside: self.async_oneside,
         };
 
         debug!("Attempting to render");

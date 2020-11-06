@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Smtp {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
@@ -8,7 +8,7 @@ pub struct Smtp {
     pub info: SmtpInfo,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SmtpInfo {
     pub helo: String,
     pub mail_from: String,

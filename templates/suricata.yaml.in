@@ -719,7 +719,7 @@ stream:
   checksum-validation: no      # reject incorrect csums
   inline: auto                  # auto will use inline mode in IPS mode, yes or no set it statically
   midstream: true
-  async-oneside: true
+  async-oneside: {{async_oneside}}
   reassembly:
     memcap: 256mb
     depth: 4mb                  # reassemble 1mb into a stream
@@ -791,7 +791,7 @@ decoder:
 # If the argument specified is 0, the engine uses an internally defined
 # default limit.  When a value is not specified, there are no limits on the recursion.
 detect:
-  profile: medium
+  profile: {{detect_profile}}
   custom-values:
     toclient-groups: 3
     toserver-groups: 25

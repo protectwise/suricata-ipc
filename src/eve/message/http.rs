@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Http {
     #[serde(flatten)]
     pub event_fields: super::EventFields,
@@ -8,7 +8,7 @@ pub struct Http {
     pub info: HttpInfo,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HttpInfo {
     #[serde(default)]
     pub hostname: String,
@@ -44,7 +44,7 @@ pub struct HttpInfo {
     pub response_headers: Vec<Header>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Header {
     pub name: String,
     #[serde(default)]
