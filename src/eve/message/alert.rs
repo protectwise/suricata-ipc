@@ -16,7 +16,7 @@ pub struct AlertInfo {
     pub severity: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Alert {
     #[serde(flatten)]
     pub event_fields: super::EventFields,

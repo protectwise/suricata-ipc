@@ -50,7 +50,7 @@ pub struct Message {
     pub event: EventType,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum State {
     #[serde(rename = "new")]
     New,
