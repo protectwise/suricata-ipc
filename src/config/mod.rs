@@ -389,8 +389,6 @@ mod tests {
         cfg.outputs = outputs;
         let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        println!("rendered: {}", rendered);
-
         let regex = regex::Regex::new(r#"filetype:\s+custom\s*[\r\n]\s*custom:\s*[\r\n]\s*filename:\s+test.path\s*[\r\n]\s*test-name: test-key\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- alert"#).unwrap();
 
         assert!(regex.find(&rendered).is_some());
