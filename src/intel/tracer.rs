@@ -1,5 +1,5 @@
+use crate::eve::{EveEventType, EveMessage};
 use crate::intel::{CachedRule, IdsKey};
-use crate::eve::{EveMessage, EveEventType};
 
 const TRACER_RULE: &'static str = r#"alert udp 10.1.10.39 54999 -> 75.75.75.75 53 (msg:"Tracer Packet 2"; content:"dannysmagictracerpkt|02|pw"; classtype:attempted-user; gid:1; sid:69041501; rev:1;)"#;
 const TRACER_DATA: &'static [u8] = &[
