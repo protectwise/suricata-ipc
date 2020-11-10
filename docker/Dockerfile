@@ -116,7 +116,8 @@ FROM development AS build-plugin
 
 #RUN apt-get update && apt-get install -y cmake
 
-ADD /ipc-plugin ipc-plugin
+ADD /plugins/ipc-plugin ipc-plugin
+ADD /plugins/cmake cmake
 
 WORKDIR /development/ipc-plugin
 
@@ -131,9 +132,8 @@ FROM build-plugin AS build
 
 WORKDIR /development
 
+ADD /plugins/kafka-plugin kafka-plugin
 ADD /benches benches
-ADD /cmake cmake
-ADD /kafka-plugin kafka-plugin
 ADD /resources resources
 ADD /src src
 ADD /templates templates
@@ -151,9 +151,11 @@ RUN cmake -S . -B build \
   && make \
   && make install
 
-RUN mkdir /tmp
+WORKDIR /development/
 
 FROM build AS test
+
+ENV SURICATA_IPC_PLUGIN=/usr/local/lib/libipc-plugin.so
 
 ENV RUST_LOG=debug
 
