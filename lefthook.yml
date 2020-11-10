@@ -2,9 +2,9 @@ build-plugin:
   piped: true
   commands:
     1_cmake:
-      cd ipc-plugin && cmake -S . -B build
+      cd plugins/ipc-plugin && cmake -S . -B build
     2_make:
-      cd ipc-plugin/build && make && make install
+      cd plugins/ipc-plugin/build && make && make install
 
 develop:
   piped: true
@@ -14,7 +14,7 @@ develop:
     2_build:
       run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t suricata-ipc-dev:latest --target development -f docker/Dockerfile .
     3_develop:
-      run: docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name suricata_ipc_dev -v `pwd`:/development suricata-rs-dev
+      run: docker run --rm -it --cap-add=ALL --security-opt seccomp=unconfined --name suricata_ipc_dev -v `pwd`:/development suricata-ipc-dev
 
 test:
   piped: true
@@ -24,7 +24,7 @@ test:
     2_build:
       run: docker build --force-rm --build-arg RUST_VERSION=${RUST_VERSION:-stable} -t suricata-ipc-test:latest --target test -f docker/Dockerfile .
     3_develop:
-      run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name suricata_ipc_dev -v `pwd`:/development suricata-rs-test
+      run: docker run --rm --cap-add=ALL --security-opt seccomp=unconfined --name suricata_ipc_dev -v `pwd`:/development suricata-ipc-test
 
 local-test:
   piped: true
