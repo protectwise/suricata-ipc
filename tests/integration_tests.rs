@@ -185,7 +185,10 @@ where
     let outputs: Vec<Box<dyn suricata_ipc::config::output::Output + Send + Sync>> = vec![
         Box::new(suricata_ipc::config::output::Alert::new(eve_config())),
         Box::new(suricata_ipc::config::output::Dns::new(eve_config())),
+        Box::new(suricata_ipc::config::output::Files::new(eve_config())),
+        Box::new(suricata_ipc::config::output::Flow::new(eve_config())),
         Box::new(suricata_ipc::config::output::Http::new(eve_config())),
+        Box::new(suricata_ipc::config::output::Stats::new(eve_config())),
     ];
 
     let mut ipc_plugin = IpcPluginConfig::default();
@@ -426,6 +429,7 @@ fn ids_process_4sics() {
 
     let mut alerts = 0;
     let mut dns = 0;
+    let mut files = 0;
     let mut flows = 0;
     let mut http = 0;
     let mut smtp = 0;
@@ -441,6 +445,9 @@ fn ids_process_4sics() {
             }
             EveEventType::Dns(_) => {
                 dns += 1;
+            }
+            EveEventType::File(_) => {
+                files += 1;
             }
             EveEventType::Flow(f) => {
                 assert!(f.event_fields.community_id.is_some());
@@ -462,14 +469,84 @@ fn ids_process_4sics() {
         }
     }
 
-    assert_eq!(alerts, 0);
-    assert!(dns > 27_000);
-    assert_eq!(http, 0);
-    assert!(flows > 9_000);
-    assert_eq!(smtp, 0);
-    assert!(stats_messages > 1);
-    assert_eq!(tls, 0);
+    assert_eq!(alerts, 0, "Received {} alerts", alerts);
+    assert!(dns > 27_000, "Received {} dns", dns);
+    assert_eq!(http, 0, "Received {} http", http);
+    assert!(files > 0, "Received {} files", files);
+    assert!(flows > 9_000, "Received {} flows", flows);
+    assert_eq!(smtp, 0, "Received {} smtp", smtp);
+    assert!(stats_messages > 1, "Received {} stats", stats_messages);
+    assert_eq!(tls, 0, "Received {} tls", tls);
     assert_eq!(packets, 246_137);
+}
+
+#[test]
+fn ids_process_files() {
+    let _ = env_logger::try_init();
+
+    prepare_executor();
+
+    let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pcap_path = cargo_dir.join("resources").join("smb2-peter.pcap");
+
+    let runner = PcapPathTestRunner::new(pcap_path);
+
+    let result: TestResult<suricata_ipc::prelude::EveMessage> =
+        smol::block_on(run_ids(runner)).expect("Failed to run");
+
+    assert_eq!(result.packets_sent, 792);
+
+    let mut alerts = 0;
+    let mut dns = 0;
+    let mut files = 0;
+    let mut flows = 0;
+    let mut http = 0;
+    let mut smtp = 0;
+    let mut tls = 0;
+    let mut stats_messages = 0;
+    let mut packets = 0;
+
+    for msg in result.messages {
+        match msg.event {
+            EveEventType::Alert(a) => {
+                assert!(a.event_fields.community_id.is_some());
+                alerts += 1;
+            }
+            EveEventType::Dns(_) => {
+                dns += 1;
+            }
+            EveEventType::File(_) => {
+                files += 1;
+            }
+            EveEventType::Flow(f) => {
+                assert!(f.event_fields.community_id.is_some());
+                flows += 1;
+            }
+            EveEventType::Http(_) => {
+                http += 1;
+            }
+            EveEventType::Smtp(_) => {
+                smtp += 1;
+            }
+            EveEventType::Stats(stats) => {
+                packets = stats.info.decoder.pkts;
+                stats_messages += 1;
+            }
+            EveEventType::Tls(_) => {
+                tls += 1;
+            }
+        }
+    }
+
+    assert_eq!(alerts, 0, "Received {} alerts", alerts);
+    assert_eq!(dns, 0, "Received {} dns", dns);
+    assert_eq!(http, 0, "Received {} http", http);
+    assert_eq!(files, 51, "Received {} files", files);
+    assert_eq!(flows, 9, "Received {} flows", flows);
+    assert_eq!(smtp, 0, "Received {} smtp", smtp);
+    assert!(stats_messages > 0, "Received {} stats", stats_messages);
+    assert_eq!(tls, 0, "Received {} tls", tls);
+    assert_eq!(packets, 792);
 }
 
 #[cfg(feature = "protobuf")]

@@ -1,6 +1,7 @@
 mod alert;
 mod date_format;
 mod dns;
+mod file;
 mod flow;
 mod http;
 mod smtp;
@@ -12,6 +13,7 @@ pub use alert::Alert;
 pub use alert::AlertInfo;
 pub use date_format::parse_date_time;
 pub use dns::{Dns, DnsAnswer, DnsEventType, DnsInfo, DnsQuery};
+pub use file::{File, FileInfo, FileState};
 pub use flow::{Flow, FlowInfo};
 pub use http::Http;
 pub use smtp::Smtp;
@@ -32,6 +34,8 @@ pub enum EventType {
     Dns(Dns),
     #[serde(rename = "flow")]
     Flow(Flow),
+    #[serde(rename = "fileinfo")]
+    File(File),
     #[serde(rename = "http")]
     Http(Http),
     #[serde(rename = "smtp")]
@@ -63,9 +67,11 @@ pub enum State {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventFields {
     pub src_ip: std::net::IpAddr,
-    pub src_port: u16,
+    #[serde(default)]
+    pub src_port: Option<u16>,
     pub dest_ip: std::net::IpAddr,
-    pub dest_port: u16,
+    #[serde(default)]
+    pub dest_port: Option<u16>,
     pub proto: String,
     pub app_proto: Option<String>,
     pub community_id: Option<String>,
@@ -196,7 +202,7 @@ mod tests {
                 flow.event_fields.src_ip,
                 std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 10, 10, 30))
             );
-            assert_eq!(flow.event_fields.src_port, 57_656);
+            assert_eq!(flow.event_fields.src_port.unwrap(), 57_656);
             assert_eq!(flow.event_fields.proto.as_str(), "TCP");
             assert!(flow.event_fields.app_proto.is_none());
             let expected_timestamp = Utc
@@ -209,7 +215,35 @@ mod tests {
 
             assert_eq!(flow.info.pkts_toserver, 3);
         } else {
-            panic!("Not stats");
+            panic!("Not flow");
+        }
+    }
+
+    #[test]
+    fn should_deserialize_eve_icmp_flow() {
+        let msg = r#"{"timestamp":"2016-06-16T15:07:24.422364-0600","flow_id":1980961674612149,"event_type":"flow","src_ip":"fe80:0000:0000:0000:7836:ddff:fe67:941f","dest_ip":"ff02:0000:0000:0000:0000:0000:0000:0002","proto":"IPV6-ICMP","icmp_type":133,"icmp_code":0,"flow":{"pkts_toserver":3,"pkts_toclient":0,"bytes_toserver":210,"bytes_toclient":0,"start":"2016-06-16T15:06:53.839093-0600","end":"2016-06-16T15:07:01.859044-0600","age":8,"state":"new","reason":"shutdown","alerted":false},"community_id":"1:ZJ+Tb/l5rNs6uZNnjO05XBTBCYE="}"#;
+
+        let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
+
+        if let EventType::Flow(flow) = eve.event {
+            assert_eq!(
+                flow.event_fields.src_ip,
+                std::net::IpAddr::V6("fe80:0000:0000:0000:7836:ddff:fe67:941f".parse().unwrap())
+            );
+            assert!(flow.event_fields.src_port.is_none());
+            assert_eq!(flow.event_fields.proto.as_str(), "IPV6-ICMP");
+            assert!(flow.event_fields.app_proto.is_none());
+            let expected_timestamp = Utc
+                .ymd(2016, 6, 16)
+                .and_hms(21, 6, 53)
+                .with_nanosecond(839093000)
+                .expect("Invalid time");
+
+            assert_eq!(flow.info.start, expected_timestamp);
+
+            assert_eq!(flow.info.pkts_toserver, 3);
+        } else {
+            panic!("Not flow");
         }
     }
 
@@ -224,7 +258,7 @@ mod tests {
                 flow.event_fields.src_ip,
                 std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 10, 10, 30))
             );
-            assert_eq!(flow.event_fields.src_port, 57_656);
+            assert_eq!(flow.event_fields.src_port.unwrap(), 57_656);
             assert_eq!(flow.event_fields.proto.as_str(), "TCP");
             assert!(flow.event_fields.app_proto.is_none());
             let expected_timestamp = Utc
@@ -256,7 +290,7 @@ mod tests {
                 flow.event_fields.dest_ip,
                 std::net::IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 8, 8))
             );
-            assert_eq!(flow.event_fields.dest_port, 53);
+            assert_eq!(flow.event_fields.dest_port.unwrap(), 53);
             assert_eq!(flow.event_fields.proto.as_str(), "UDP");
             assert_eq!(flow.event_fields.app_proto, Some("dns".to_owned()));
 
@@ -327,6 +361,20 @@ mod tests {
             }
         } else {
             panic!("Not dns")
+        }
+    }
+
+    #[test]
+    fn should_decode_file() {
+        let msg = r#"{"timestamp":"2016-06-16T15:07:06.802717-0600","flow_id":2180082800938789,"event_type":"fileinfo","src_ip":"10.3.1.1","src_port":445,"dest_ip":"10.3.1.2","dest_port":56746,"proto":"TCP","smb":{"id":27,"dialect":"2.02","command":"SMB2_COMMAND_READ","status":"STATUS_END_OF_FILE","status_code":"0xc0000011","session_id":706141969,"tree_id":201977730,"filename":"file69.txt","share":"\\\\10.3.1.1\\public","fuid":"96c8e081-0000-0000-441e-a47e00000000"},"app_proto":"smb","fileinfo":{"filename":"file69.txt","sid":[],"gaps":false,"state":"CLOSED","stored":false,"size":3109,"tx_id":26}}"#;
+
+        let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
+
+        if let EventType::File(v) = eve.event {
+            assert!(!v.info.filename.is_empty());
+            assert!(!v.info.stored);
+        } else {
+            panic!("Not http")
         }
     }
 

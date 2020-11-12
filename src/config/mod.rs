@@ -1,4 +1,5 @@
 pub mod eve;
+pub mod filestore;
 pub mod ipc_plugin;
 pub mod output;
 pub mod plugin;
@@ -59,6 +60,7 @@ struct ConfigTemplate<'a> {
     plugins: Vec<RenderedPlugin<'a>>,
     detect_profile: DetectProfile,
     async_oneside: bool,
+    filestore: &'a str,
 }
 
 /// Runmodes for suricata
@@ -145,6 +147,8 @@ pub struct Config {
     pub detect_profile: DetectProfile,
     /// async-oneside flow handling
     pub async_oneside: bool,
+    /// filestore configuration
+    pub filestore: filestore::Filestore,
 }
 
 impl Default for Config {
@@ -206,6 +210,7 @@ impl Default for Config {
             close_grace_period: None,
             detect_profile: DetectProfile::Medium,
             async_oneside: false,
+            filestore: filestore::Filestore::default(),
         }
     }
 }
@@ -238,6 +243,7 @@ impl Config {
                 config: p.config().unwrap_or_else(|| "".into()),
             })
             .collect();
+        let filestore = self.filestore.render(&self.materialize_config_to);
 
         let template = ConfigTemplate {
             runmode: self.runmode.clone(),
@@ -255,6 +261,7 @@ impl Config {
             plugins: plugins,
             detect_profile: self.detect_profile.clone(),
             async_oneside: self.async_oneside,
+            filestore: &filestore,
         };
 
         debug!("Attempting to render");

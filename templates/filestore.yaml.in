@@ -1,0 +1,41 @@
+  # Output module for storing files on disk. Files are stored in
+  # directory names consisting of the first 2 characters of the
+  # SHA256 of the file. Each file is given its SHA256 as a filename.
+  #
+  # When a duplicate file is found, the timestamps on the existing file
+  # are updated.
+  #
+  # Unlike the older filestore, metadata is not written by default
+  # as each file should already have a "fileinfo" record in the
+  # eve-log. If write-fileinfo is set to yes, then each file will have
+  # one more associated .json files that consist of the fileinfo
+  # record. A fileinfo file will be written for each occurrence of the
+  # file seen using a filename suffix to ensure uniqueness.
+  #
+  # To prune the filestore directory see the "suricatactl filestore
+  # prune" command which can delete files over a certain age.
+  - file-store:
+      version: 2
+      enabled: {{ enabled }}
+
+      # Set the directory for the filestore. Relative pathnames
+      # are contained within the "default-log-dir".
+      dir: {{ path }}
+
+      # Write out a fileinfo record for each occurrence of a file.
+      # Disabled by default as each occurrence is already logged
+      # as a fileinfo record to the main eve-log.
+      #write-fileinfo: yes
+
+      # Force storing of all files. Default: no.
+      #force-filestore: yes
+
+      # Override the global stream-depth for sessions in which we want
+      # to perform file extraction. Set to 0 for unlimited; otherwise,
+      # must be greater than the global stream-depth value to be used.
+      #stream-depth: 0
+
+      # Uncomment the following variable to define how many files can
+      # remain open for filestore by Suricata. Default value is 0 which
+      # means files get closed after each write to the file.
+      #max-open-files: 1000

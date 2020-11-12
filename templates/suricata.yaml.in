@@ -135,12 +135,7 @@ outputs:
   - drop:
       enabled: no
 
-  - file-store:
-      version: 2
-      enabled: no
-
-  - file-store:
-      enabled: no
+  {{ filestore }}
 
   - tcp-data:
       enabled: no

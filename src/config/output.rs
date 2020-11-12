@@ -5,6 +5,7 @@ use askama::Template;
 pub enum OutputType {
     Alert,
     Dns,
+    Files,
     Flow,
     Http,
     Smtp,
@@ -18,6 +19,7 @@ impl std::fmt::Display for OutputType {
         match self {
             Self::Alert => write!(f, "Alert"),
             Self::Dns => write!(f, "Dns"),
+            Self::Files => write!(f, "Files"),
             Self::Flow => write!(f, "Flow"),
             Self::Http => write!(f, "Http"),
             Self::Smtp => write!(f, "Smtp"),
@@ -82,6 +84,40 @@ impl Output for Dns {
     }
     fn output_type(&self) -> OutputType {
         OutputType::Dns
+    }
+}
+
+pub struct Files {
+    pub eve: EveConfiguration,
+}
+
+impl Files {
+    pub fn new(eve: EveConfiguration) -> Self {
+        Self { eve: eve }
+    }
+}
+
+impl Output for Files {
+    fn name(&self) -> &str {
+        "files"
+    }
+    fn render_messages(&self) -> String {
+        format!(
+            r#"
+        - {}:
+            force-magic: no   # force logging magic on all logged files
+            # force logging of checksums, available hash functions are md5,
+            # sha1 and sha256
+            #force-hash: [md5]
+        "#,
+            self.name()
+        )
+    }
+    fn eve(&self) -> &EveConfiguration {
+        &self.eve
+    }
+    fn output_type(&self) -> OutputType {
+        OutputType::Files
     }
 }
 
