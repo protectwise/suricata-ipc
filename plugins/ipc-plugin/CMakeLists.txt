@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 
-project(kafka-plugin VERSION 0.1.0 DESCRIPTION "Suricata EVE Kafka Plugin" LANGUAGES C CXX)
+project(ipc-plugin VERSION 0.1.0 DESCRIPTION "Suricata IPC Plugin" LANGUAGES C CXX)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

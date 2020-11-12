@@ -4,4 +4,5 @@ target
 **/*/*.o
 examples
 **/*/src/libs
-ipc-plugin/build
+plugins/ipc-plugin/build
+plugins/kafka-plugin/build
