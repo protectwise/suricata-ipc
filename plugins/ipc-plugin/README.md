@@ -17,8 +17,18 @@ To obtain the branch
 
     git clone https://github.com/dbcfd/suricata.git
     git checkout -b 4070-packet-reinit-api-2 origin/4070-packet-reinit-api-2
+   
+`suricata-ipc` requires this version of suricata to run. To build this version of suricata:
+   
+    autoreconf -i
+    ./configure \
+        --enable-pcre-jit \
+        --disable-gccmarch-native \
+        --with-unix-socket
+    make install
+    make install-conf
 
-You will then need to change the suricata dependency in `ipc-plugin-rs/Cargo.toml` to point at this suricata location.
+Building of the plugin expects suricata to live in `/build/suricata`. If you did not check out suricata to that location, then you must change the suricata dependency in `ipc-plugin-rs/Cargo.toml` to point at this suricata location.
 
 To build, you will need to run cmake, then make.
 
