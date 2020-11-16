@@ -87,13 +87,23 @@ impl Output for Dns {
     }
 }
 
+pub enum FileHash {
+    MD5,
+    Sha1,
+    Sha256,
+}
+
 pub struct Files {
     pub eve: EveConfiguration,
+    pub hashes: Vec<FileHash>,
 }
 
 impl Files {
     pub fn new(eve: EveConfiguration) -> Self {
-        Self { eve: eve }
+        Self {
+            eve: eve,
+            hashes: vec![],
+        }
     }
 }
 
@@ -102,15 +112,31 @@ impl Output for Files {
         "files"
     }
     fn render_messages(&self) -> String {
+        let force_hash = if !self.hashes.is_empty() {
+            let hashes = self
+                .hashes
+                .iter()
+                .map(|h| match h {
+                    FileHash::MD5 => "md5",
+                    FileHash::Sha1 => "sha1",
+                    FileHash::Sha256 => "sha256",
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("force-hash: [{}]", hashes)
+        } else {
+            "#force-hash: []".to_string()
+        };
         format!(
             r#"
         - {}:
             force-magic: no   # force logging magic on all logged files
             # force logging of checksums, available hash functions are md5,
             # sha1 and sha256
-            #force-hash: [md5]
+            {}
         "#,
-            self.name()
+            self.name(),
+            force_hash
         )
     }
     fn eve(&self) -> &EveConfiguration {

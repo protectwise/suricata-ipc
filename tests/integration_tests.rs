@@ -186,7 +186,10 @@ where
     let outputs: Vec<Box<dyn suricata_ipc::config::output::Output + Send + Sync>> = vec![
         Box::new(suricata_ipc::config::output::Alert::new(eve_config())),
         Box::new(suricata_ipc::config::output::Dns::new(eve_config())),
-        Box::new(suricata_ipc::config::output::Files::new(eve_config())),
+        Box::new(suricata_ipc::config::output::Files {
+            eve: eve_config(),
+            hashes: vec![suricata_ipc::config::output::FileHash::Sha256],
+        }),
         Box::new(suricata_ipc::config::output::Flow::new(eve_config())),
         Box::new(suricata_ipc::config::output::Http::new(eve_config())),
         Box::new(suricata_ipc::config::output::Stats::new(eve_config())),
@@ -501,6 +504,7 @@ fn ids_process_files() {
     let mut alerts = 0;
     let mut dns = 0;
     let mut files = 0;
+    let mut files_with_hash = 0;
     let mut flows = 0;
     let mut http = 0;
     let mut smtp = 0;
@@ -522,6 +526,9 @@ fn ids_process_files() {
             }
             EveEventType::File(f) => {
                 files += 1;
+                if f.info.sha256.is_some() {
+                    files_with_hash += 1;
+                }
                 if f.info.stored {
                     saw_stored_file = true;
                 }
@@ -550,6 +557,11 @@ fn ids_process_files() {
     assert_eq!(dns, 0, "Received {} dns", dns);
     assert_eq!(http, 0, "Received {} http", http);
     assert_eq!(files, 51, "Received {} files", files);
+    assert_eq!(
+        files_with_hash, 51,
+        "Received {} files with hash",
+        files_with_hash
+    );
     assert_eq!(flows, 9, "Received {} flows", flows);
     assert_eq!(smtp, 0, "Received {} smtp", smtp);
     assert!(stats_messages > 0, "Received {} stats", stats_messages);

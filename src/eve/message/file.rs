@@ -19,6 +19,9 @@ pub struct FileInfo {
     pub stored: bool,
     pub size: usize,
     pub tx_id: usize,
+    pub md5: Option<String>,
+    pub sha1: Option<String>,
+    pub sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
