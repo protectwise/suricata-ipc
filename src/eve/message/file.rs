@@ -6,12 +6,14 @@ pub enum FileState {
     Open,
     #[serde(rename = "CLOSED")]
     Closed,
+    #[serde(rename = "UNKNOWN")]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FileInfo {
     pub filename: String,
-    pub sid: Vec<String>,
+    pub sid: Vec<usize>,
     pub gaps: bool,
     pub state: FileState,
     pub stored: bool,

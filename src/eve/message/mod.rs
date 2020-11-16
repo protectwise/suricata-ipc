@@ -9,8 +9,7 @@ mod stats;
 mod tcp;
 mod tls;
 
-pub use alert::Alert;
-pub use alert::AlertInfo;
+pub use alert::{Alert, AlertFlowInfo, AlertInfo};
 pub use date_format::parse_date_time;
 pub use dns::{Dns, DnsAnswer, DnsEventType, DnsInfo, DnsQuery};
 pub use file::{File, FileInfo, FileState};

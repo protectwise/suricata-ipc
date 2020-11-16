@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
+use suricata_ipc::config::filestore::Filestore;
 use suricata_ipc::config::ipc_plugin::IpcPluginConfig;
 #[cfg(feature = "protobuf")]
 use suricata_ipc::prelude::proto::Eve;
@@ -199,6 +200,7 @@ where
     ids_args.materialize_config_to = suricata_yaml;
     ids_args.rule_path = rules;
     ids_args.ipc_plugin = ipc_plugin;
+    ids_args.filestore = Filestore::new(None);
     let mut ids: Ids<M> = Ids::new(ids_args).await?;
 
     let (message_sender, message_receiver) = unbounded();
@@ -505,18 +507,24 @@ fn ids_process_files() {
     let mut tls = 0;
     let mut stats_messages = 0;
     let mut packets = 0;
+    let mut saw_stored_file = false;
 
     for msg in result.messages {
         match msg.event {
             EveEventType::Alert(a) => {
                 assert!(a.event_fields.community_id.is_some());
-                alerts += 1;
+                if a.info.files.is_empty() {
+                    alerts += 1;
+                }
             }
             EveEventType::Dns(_) => {
                 dns += 1;
             }
-            EveEventType::File(_) => {
+            EveEventType::File(f) => {
                 files += 1;
+                if f.info.stored {
+                    saw_stored_file = true;
+                }
             }
             EveEventType::Flow(f) => {
                 assert!(f.event_fields.community_id.is_some());
@@ -538,7 +546,7 @@ fn ids_process_files() {
         }
     }
 
-    assert_eq!(alerts, 0, "Received {} alerts", alerts);
+    assert_eq!(alerts, 51, "Received {} alerts", alerts);
     assert_eq!(dns, 0, "Received {} dns", dns);
     assert_eq!(http, 0, "Received {} http", http);
     assert_eq!(files, 51, "Received {} files", files);
@@ -547,6 +555,7 @@ fn ids_process_files() {
     assert!(stats_messages > 0, "Received {} stats", stats_messages);
     assert_eq!(tls, 0, "Received {} tls", tls);
     assert_eq!(packets, 792);
+    assert!(saw_stored_file);
 }
 
 #[cfg(feature = "protobuf")]

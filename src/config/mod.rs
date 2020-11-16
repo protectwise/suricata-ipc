@@ -243,7 +243,7 @@ impl Config {
                 config: p.config().unwrap_or_else(|| "".into()),
             })
             .collect();
-        let filestore = self.filestore.render(&self.materialize_config_to);
+        let filestore = self.filestore.render(&self.default_log_dir);
 
         let template = ConfigTemplate {
             runmode: self.runmode.clone(),

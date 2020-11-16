@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlertFlowInfo {
+    pub pkts_toserver: usize,
+    pub pkts_toclient: usize,
+    pub bytes_toserver: usize,
+    pub bytes_toclient: usize,
     #[serde(with = "date_format")]
     pub start: DateTime<Utc>,
 }
@@ -14,6 +18,10 @@ pub struct AlertInfo {
     pub signature_id: u64,
     pub rev: u32,
     pub severity: u32,
+    #[serde(default)]
+    pub files: Vec<crate::eve::message::FileInfo>,
+    #[serde(default)]
+    pub flow: Option<AlertFlowInfo>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
