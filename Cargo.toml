@@ -13,6 +13,7 @@ exclude = ["resources/*.pcap"]
 
 [dependencies]
 askama = "0.10"
+askama_shared = "=0.10.4"
 chrono = "0.4"
 lazy_static = "1.4"
 libc = "0.2"
