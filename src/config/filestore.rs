@@ -22,9 +22,9 @@ impl Filestore {
             p.clone()
         } else {
             let p = materialize_path.join("filestore");
-            log::info!("Setting up default filestore path {:?}", p);
+            log::debug!("Setting up default filestore path {:?}", p);
             if !p.exists() {
-                log::info!("Default filestore path {:?} did not exist", p);
+                log::info!("Default filestore path {:?} did not exist, creating it", p);
                 std::fs::create_dir_all(&p)?;
             }
             p
