@@ -47,7 +47,7 @@ fn parse_rules() {
 
     let rules = Rules::from_path(rules_path).expect("Failed to get rules");
 
-    assert_eq!(rules.len(), 20);
+    assert_eq!(rules.len(), 22);
 
     let cache: IntelCache<Rule> = rules.into();
 
