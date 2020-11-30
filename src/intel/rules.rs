@@ -61,10 +61,11 @@ impl Rules {
         let rules: Vec<_> = lines
             .into_iter()
             .flat_map(|l| {
+                let l = l.trim_start();
                 if l.is_empty() || l.starts_with("#") {
                     None
                 } else {
-                    match parse_rule(&l) {
+                    match parse_rule(l) {
                         Ok(r) => Some(r),
                         Err(e) => {
                             warn!("Failed to parse rule '{}': {:?}", l, e);
