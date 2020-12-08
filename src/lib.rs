@@ -188,6 +188,9 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
     /// Stream. The `SpawnContext` Should not be used by you (you jerk). The Stream however, should be watched for completion
     /// When the Stream completes, you may consider Suricata dead. The streams element is a Result<String, String> representing
     /// stdout, stderr respectively.
+    ///
+    /// Warning, you MUST consume the `Stream` if you don't Suricata will eventiually lock up.
+    /// If you are unsure about any of this use `Ids::new()`
     pub fn new(args: &Config) -> Result<(SpawnContext<'a, M>, impl Stream<Item = Result<Result<String, String>, Error>>), Error> {
         if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {

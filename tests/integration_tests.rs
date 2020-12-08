@@ -12,6 +12,7 @@ use suricata_ipc::config::ipc_plugin::IpcPluginConfig;
 #[cfg(feature = "protobuf")]
 use suricata_ipc::prelude::proto::Eve;
 use suricata_ipc::prelude::*;
+use suricata_ipc::SpawnContext;
 
 const SURICATA_YAML: &'static str = "suricata.yaml";
 const CUSTOM_RULES: &'static str = "custom.rules";
@@ -204,7 +205,12 @@ where
     ids_args.rule_path = rules;
     ids_args.ipc_plugin = ipc_plugin;
     ids_args.filestore = Filestore::new(None);
-    let mut ids: Ids<M> = Ids::new(ids_args).await?;
+
+    let (spawn_ctx, stdout_stream) = SpawnContext::new(&ids_args)?;
+    //You must spawn the stdout stream, if you dont, suricata may pause.
+    smol::spawn(stdout_stream.for_each(|r| info!("Stdout: {:?}", r))).detach();
+
+    let mut ids: Ids<M> = Ids::new_with_spawn_context(ids_args, spawn_ctx).await?;
 
     let (message_sender, message_receiver) = unbounded();
 
