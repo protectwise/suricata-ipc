@@ -110,7 +110,7 @@ use crate::config::output::{Output, OutputType};
 use config::Config;
 use log::*;
 use prelude::*;
-use smol::future::{or, FutureExt};
+use smol::future::or;
 use smol::io::AsyncBufReadExt;
 use smol::stream::{StreamExt, Stream};
 use std::path::PathBuf;
@@ -151,7 +151,6 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
     fn suricata_output_stream(process: &mut std::process::Child) -> impl Stream<Item = Result<Result<String, String>, Error>> {
         let stdout_complete = {
             let o = process.stdout.take().unwrap();
-            let pid = process.id();
             let o = smol::Unblock::new(o);
             let reader = smol::io::BufReader::new(o);
             reader.lines().map(move |t| {
@@ -167,7 +166,6 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
         };
         let stderr_complete = {
             let o = process.stderr.take().unwrap();
-            let pid = process.id();
             let o = smol::Unblock::new(o);
             let reader = smol::io::BufReader::new(o);
             reader.lines().map(move |t| {
@@ -183,19 +181,19 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
         };
         smol::stream::or(stdout_complete, stderr_complete).boxed()
     }
+
     ///
     /// When suricata starts it will want to process rules, before connecting to the ipc sockets or alert sockets.
     /// During this time it is still possible that suricata may not start, so we expose the SpawnContext along side a
     /// Stream. The `SpawnContext` Should not be used by you (you jerk). The Stream however, should be watched for completion
     /// When the Stream completes, you may consider Suricata dead. The streams element is a Result<String, String> representing
     /// stdout, stderr respectively.
-    pub fn new(args: Config) -> Result<(SpawnContext<'a, M>, impl Stream<Item = Result<Result<String, String>, Error>>), Error> {
+    pub fn new(args: &Config) -> Result<(SpawnContext<'a, M>, impl Stream<Item = Result<Result<String, String>, Error>>), Error> {
         if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {
                 msg: "Max pending packets must be larger than IPC allocation batch".into(),
             });
         }
-
         //let close_grace_period = args.close_grace_period.clone();
         let opt_size = args.buffer_size.clone();
 
@@ -225,6 +223,18 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
 
         Ok((context, output_streams))
 
+    }
+}
+
+impl<'a, T> Drop for SpawnContext<'a, T> {
+    fn drop(&mut self) {
+        let process = match std::mem::replace(&mut self.process, None) {
+            Some(process) => process,
+            None => return,
+        };
+        let pid = process.id() as _;
+        // Dont mess around!
+        unsafe { libc::kill(pid, libc::SIGKILL) };
     }
 }
 
@@ -310,71 +320,16 @@ impl<'a, M> Ids<'a, M> {
         }
     }
 
-    fn spawn_suricata(_: &Config) -> Result<std::process::Child, Error> {
-        unimplemented!()
-    }
-
-
-    pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
-    where
-        M: Send + 'static,
-    {
+    pub async fn new_with_spawn_context(args: Config, mut spawn_context: SpawnContext<'a, M>) -> Result<Ids<'a, M>, Error> {
         if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {
                 msg: "Max pending packets must be larger than IPC allocation batch".into(),
             });
         }
-
         let close_grace_period = args.close_grace_period.clone();
-        let opt_size = args.buffer_size.clone();
 
-        let connection_tasks: Vec<_> = args
-            .outputs
-            .iter()
-            .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
-            .collect();
-        debug!("Readers are listening, starting suricata");
-
-        let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
-        args.materialize(ipc_plugin)?;
-
-        let pending_ipc_connections = servers
-            .into_iter()
-            .map(|s| smol::spawn(async move { s.accept() }));
-
-        let mut process = Self::spawn_suricata(&args)?;
-
-        let stdout_complete = {
-            let o = process.stdout.take().unwrap();
-            let pid = process.id();
-            let o = smol::Unblock::new(o);
-            let reader = smol::io::BufReader::new(o);
-            reader.lines().for_each(move |t| {
-                if let Ok(l) = t {
-                    debug!("[Suricata ({})] {}", pid, l);
-                }
-            })
-        };
-        let stderr_complete = {
-            let o = process.stderr.take().unwrap();
-            let pid = process.id();
-            let o = smol::Unblock::new(o);
-            let reader = smol::io::BufReader::new(o);
-            reader.lines().for_each(move |t| {
-                if let Ok(l) = t {
-                    error!("[Suricata ({})] {}", pid, l);
-                }
-            })
-        };
-
-        let lines = async move {
-            or(stdout_complete, stderr_complete).await;
-
-            info!("Suricata closed");
-        }
-        .boxed();
-
-        smol::spawn(lines).detach();
+        let pending_ipc_connections = std::mem::take(&mut spawn_context.awaiting_servers);
+        let awaiting_readers = std::mem::take(&mut spawn_context.awaiting_readers);
 
         let connected_ipcs = async move {
             let mut ipcs = Vec::with_capacity(pending_ipc_connections.len());
@@ -384,19 +339,20 @@ impl<'a, M> Ids<'a, M> {
             let ipcs: Result<Vec<_>, _> = ipcs.into_iter().collect();
             ipcs
         }
-        .await?;
+            .await?;
 
         debug!("IPC Connection formed");
 
         let readers = async move {
-            let mut readers = Vec::with_capacity(connection_tasks.len());
-            for connection in connection_tasks {
+            let mut readers = Vec::with_capacity(awaiting_readers.len());
+            for connection in awaiting_readers {
                 readers.push(connection.await);
             }
             let readers: Result<Vec<_>, _> = readers.into_iter().collect();
             readers
-        }
-        .await?;
+        }.await?;
+
+        debug!("Eve readers formed.");
 
         if !readers.is_empty() {
             debug!("{} Eve Readers connected", readers.len());
@@ -405,9 +361,134 @@ impl<'a, M> Ids<'a, M> {
         Ok(Ids {
             close_grace_period: close_grace_period,
             readers: readers,
-            process: Some(process),
+            process: (&mut spawn_context).process.take(),
             ipc_servers: connected_ipcs,
         })
+    }
+
+
+    pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
+    where
+        M: Send + 'static,
+    {
+
+        let (spawn_ctx, stdout_stream) = SpawnContext::new(&args)?;
+        let pid : u32 = spawn_ctx
+            .process
+            .as_ref()
+            .map(|p| p.id())
+            .ok_or(Error::Custom {msg: String::from("Missing process.")})?;
+
+
+        let stdout_fut = stdout_stream.for_each(move |r| {
+            match r {
+                Err(io) => {
+                    error!("Fatal io Error ({}) {:?}", pid, io)
+                },
+                Ok(Ok(line)) => {
+                    debug!("[Suricata ({})] {}", pid, line);
+                },
+                Ok(Err(line)) => {
+                    error!("[Suricata ({})] {}", pid, line);
+                }
+            }
+        });
+        smol::spawn(stdout_fut).detach();
+
+        Self::new_with_spawn_context(args, spawn_ctx).await
+
+
+
+        //
+        // if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
+        //     return Err(Error::Custom {
+        //         msg: "Max pending packets must be larger than IPC allocation batch".into(),
+        //     });
+        // }
+        //
+        // let close_grace_period = args.close_grace_period.clone();
+        // let opt_size = args.buffer_size.clone();
+        //
+        // let connection_tasks: Vec<_> = args
+        //     .outputs
+        //     .iter()
+        //     .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
+        //     .collect();
+        // debug!("Readers are listening, starting suricata");
+        //
+        // let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
+        // args.materialize(ipc_plugin)?;
+        //
+        // let pending_ipc_connections = servers
+        //     .into_iter()
+        //     .map(|s| smol::spawn(async move { s.accept() }));
+        //
+        // let mut process = Self::spawn_suricata(&args)?;
+        //
+        // let stdout_complete = {
+        //     let o = process.stdout.take().unwrap();
+        //     let pid = process.id();
+        //     let o = smol::Unblock::new(o);
+        //     let reader = smol::io::BufReader::new(o);
+        //     reader.lines().for_each(move |t| {
+        //         if let Ok(l) = t {
+        //             debug!("[Suricata ({})] {}", pid, l);
+        //         }
+        //     })
+        // };
+        // let stderr_complete = {
+        //     let o = process.stderr.take().unwrap();
+        //     let pid = process.id();
+        //     let o = smol::Unblock::new(o);
+        //     let reader = smol::io::BufReader::new(o);
+        //     reader.lines().for_each(move |t| {
+        //         if let Ok(l) = t {
+        //             error!("[Suricata ({})] {}", pid, l);
+        //         }
+        //     })
+        // };
+        //
+        // let lines = async move {
+        //     or(stdout_complete, stderr_complete).await;
+        //
+        //     info!("Suricata closed");
+        // }
+        // .boxed();
+        //
+        // smol::spawn(lines).detach();
+        //
+        // let connected_ipcs = async move {
+        //     let mut ipcs = Vec::with_capacity(pending_ipc_connections.len());
+        //     for ipc in pending_ipc_connections {
+        //         ipcs.push(ipc.await);
+        //     }
+        //     let ipcs: Result<Vec<_>, _> = ipcs.into_iter().collect();
+        //     ipcs
+        // }
+        // .await?;
+        //
+        // debug!("IPC Connection formed");
+        //
+        // let readers = async move {
+        //     let mut readers = Vec::with_capacity(connection_tasks.len());
+        //     for connection in connection_tasks {
+        //         readers.push(connection.await);
+        //     }
+        //     let readers: Result<Vec<_>, _> = readers.into_iter().collect();
+        //     readers
+        // }
+        // .await?;
+        //
+        // if !readers.is_empty() {
+        //     debug!("{} Eve Readers connected", readers.len());
+        // }
+        //
+        // Ok(Ids {
+        //     close_grace_period: close_grace_period,
+        //     readers: readers,
+        //     process: Some(process),
+        //     ipc_servers: connected_ipcs,
+        // })
     }
 
 
