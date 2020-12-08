@@ -112,11 +112,121 @@ use log::*;
 use prelude::*;
 use smol::future::{or, FutureExt};
 use smol::io::AsyncBufReadExt;
-use smol::stream::StreamExt;
+use smol::stream::{StreamExt, Stream};
 use std::path::PathBuf;
 use std::time::Duration;
+use smol::Task;
+use packet_ipc::ConnectedIpc;
 
 //const READER_BUFFER_SIZE: usize = 128;
+
+pub struct SpawnContext<'a, M> {
+    process: Option<std::process::Child>,
+    awaiting_servers: Vec<Task<Result<packet_ipc::ConnectedIpc<'a>, Error>>>,
+    awaiting_readers: Vec<Task<Result<EveReader<M>, Error>>>,
+}
+
+impl <'a, M: Send + 'static> SpawnContext<'a, M> {
+    fn spawn_suricata(args: &Config) -> Result<std::process::Child, Error> {
+        let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
+        let server_args: Vec<String> = vec![
+            "-c",
+            args.materialize_config_to.to_str().unwrap(),
+            "--capture-plugin=ipc-plugin",
+        ]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        command
+            .args(server_args)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped());
+        info!("Spawning {:?}", command);
+        command.spawn().map_err(Error::Io)
+    }
+    /// A stream with stdout/error from suricata combined in a Result<String, String>
+    /// Useful, to watch for completion on startup and to delegate the logging to the caller.
+    fn suricata_output_stream(process: &mut std::process::Child) -> impl Stream<Item = Result<Result<String, String>, Error>> {
+        let stdout_complete = {
+            let o = process.stdout.take().unwrap();
+            let pid = process.id();
+            let o = smol::Unblock::new(o);
+            let reader = smol::io::BufReader::new(o);
+            reader.lines().map(move |t| {
+                match t {
+                    Ok(l) => {
+                        Ok(Ok(l))
+                    },
+                    Err(e) => {
+                        Err(Error::Io(e))
+                    }
+                }
+            }).fuse()
+        };
+        let stderr_complete = {
+            let o = process.stderr.take().unwrap();
+            let pid = process.id();
+            let o = smol::Unblock::new(o);
+            let reader = smol::io::BufReader::new(o);
+            reader.lines().map(move |t| {
+                match t {
+                    Ok(l) => {
+                        Ok(Err(l))
+                    },
+                    Err(e) => {
+                        Err(Error::Io(e))
+                    }
+                }
+            }).fuse()
+        };
+        smol::stream::or(stdout_complete, stderr_complete).boxed()
+    }
+    ///
+    /// When suricata starts it will want to process rules, before connecting to the ipc sockets or alert sockets.
+    /// During this time it is still possible that suricata may not start, so we expose the SpawnContext along side a
+    /// Stream. The `SpawnContext` Should not be used by you (you jerk). The Stream however, should be watched for completion
+    /// When the Stream completes, you may consider Suricata dead. The streams element is a Result<String, String> representing
+    /// stdout, stderr respectively.
+    pub fn new(args: Config) -> Result<(SpawnContext<'a, M>, impl Stream<Item = Result<Result<String, String>, Error>>), Error> {
+        if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
+            return Err(Error::Custom {
+                msg: "Max pending packets must be larger than IPC allocation batch".into(),
+            });
+        }
+
+        //let close_grace_period = args.close_grace_period.clone();
+        let opt_size = args.buffer_size.clone();
+
+        let awaiting_readers: Vec<_> = args
+            .outputs
+            .iter()
+            .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
+            .collect();
+        debug!("Readers are listening, starting suricata");
+
+        let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
+        args.materialize(ipc_plugin)?;
+
+        let awaiting_servers: Vec<Task<Result<ConnectedIpc, Error>>> = servers
+            .into_iter()
+            .map(|s| smol::spawn(async move { s.accept().map_err(Error::PacketIpc) }))
+            .collect();
+
+        let mut process = Self::spawn_suricata(&args)?;
+
+        let output_streams = Self::suricata_output_stream(&mut process);
+        let context = SpawnContext{
+            process: Some(process),
+            awaiting_servers,
+            awaiting_readers
+        };
+
+        Ok((context, output_streams))
+
+    }
+}
 
 pub struct Ids<'a, T> {
     close_grace_period: Option<Duration>,
@@ -199,6 +309,11 @@ impl<'a, M> Ids<'a, M> {
             false
         }
     }
+
+    fn spawn_suricata(_: &Config) -> Result<std::process::Child, Error> {
+        unimplemented!()
+    }
+
 
     pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
     where
@@ -295,25 +410,7 @@ impl<'a, M> Ids<'a, M> {
         })
     }
 
-    fn spawn_suricata(args: &Config) -> Result<std::process::Child, Error> {
-        let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
-        let server_args: Vec<String> = vec![
-            "-c",
-            args.materialize_config_to.to_str().unwrap(),
-            "--capture-plugin=ipc-plugin",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect();
 
-        command
-            .args(server_args)
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped());
-        info!("Spawning {:?}", command);
-        command.spawn().map_err(Error::Io)
-    }
 }
 
 fn connect_output<M: Send + 'static>(
