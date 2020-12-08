@@ -205,6 +205,7 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
             .iter()
             .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
             .collect();
+
         debug!("Readers are listening, starting suricata");
 
         let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
@@ -216,6 +217,7 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
             .collect();
 
         let mut process = Self::spawn_suricata(&args)?;
+        debug!("Spawn complete");
 
         let output_streams = Self::suricata_output_stream(&mut process);
         let context = SpawnContext{
@@ -223,7 +225,7 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
             awaiting_servers,
             awaiting_readers
         };
-
+        debug!("Return stream and ctx");
         Ok((context, output_streams))
 
     }
@@ -397,6 +399,8 @@ impl<'a, M> Ids<'a, M> {
             }
         });
         smol::spawn(stdout_fut).detach();
+
+        info!("SpawnContext created");
 
         Self::new_with_spawn_context(args, spawn_ctx).await
     }
