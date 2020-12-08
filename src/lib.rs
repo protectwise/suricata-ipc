@@ -109,14 +109,14 @@ pub mod proto {
 use crate::config::output::{Output, OutputType};
 use config::Config;
 use log::*;
+use packet_ipc::ConnectedIpc;
 use prelude::*;
 use smol::future::or;
 use smol::io::AsyncBufReadExt;
-use smol::stream::{StreamExt, Stream};
+use smol::stream::{Stream, StreamExt};
+use smol::Task;
 use std::path::PathBuf;
 use std::time::Duration;
-use smol::Task;
-use packet_ipc::ConnectedIpc;
 
 //const READER_BUFFER_SIZE: usize = 128;
 
@@ -126,7 +126,7 @@ pub struct SpawnContext<'a, M> {
     awaiting_readers: Vec<Task<Result<EveReader<M>, Error>>>,
 }
 
-impl <'a, M: Send + 'static> SpawnContext<'a, M> {
+impl<'a, M: Send + 'static> SpawnContext<'a, M> {
     fn spawn_suricata(args: &Config) -> Result<std::process::Child, Error> {
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         let server_args: Vec<String> = vec![
@@ -134,9 +134,9 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
             args.materialize_config_to.to_str().unwrap(),
             "--capture-plugin=ipc-plugin",
         ]
-            .into_iter()
-            .map(String::from)
-            .collect();
+        .into_iter()
+        .map(String::from)
+        .collect();
 
         command
             .args(server_args)
@@ -148,36 +148,32 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
     }
     /// A stream with stdout/error from suricata combined in a Result<String, String>
     /// Useful, to watch for completion on startup and to delegate the logging to the caller.
-    fn suricata_output_stream(process: &mut std::process::Child) -> impl Stream<Item = Result<Result<String, String>, Error>> {
+    fn suricata_output_stream(
+        process: &mut std::process::Child,
+    ) -> impl Stream<Item = Result<Result<String, String>, Error>> {
         let stdout_complete = {
             let o = process.stdout.take().unwrap();
             let o = smol::Unblock::new(o);
             let reader = smol::io::BufReader::new(o);
-            reader.lines().map(move |t| {
-                match t {
-                    Ok(l) => {
-                        Ok(Ok(l))
-                    },
-                    Err(e) => {
-                        Err(Error::Io(e))
-                    }
-                }
-            }).fuse()
+            reader
+                .lines()
+                .map(move |t| match t {
+                    Ok(l) => Ok(Ok(l)),
+                    Err(e) => Err(Error::Io(e)),
+                })
+                .fuse()
         };
         let stderr_complete = {
             let o = process.stderr.take().unwrap();
             let o = smol::Unblock::new(o);
             let reader = smol::io::BufReader::new(o);
-            reader.lines().map(move |t| {
-                match t {
-                    Ok(l) => {
-                        Ok(Err(l))
-                    },
-                    Err(e) => {
-                        Err(Error::Io(e))
-                    }
-                }
-            }).fuse()
+            reader
+                .lines()
+                .map(move |t| match t {
+                    Ok(l) => Ok(Err(l)),
+                    Err(e) => Err(Error::Io(e)),
+                })
+                .fuse()
         };
         smol::stream::or(stdout_complete, stderr_complete).boxed()
     }
@@ -191,7 +187,15 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
     ///
     /// Warning, you MUST consume the `Stream` if you don't Suricata will eventiually lock up.
     /// If you are unsure about any of this use `Ids::new()`
-    pub fn new(args: &Config) -> Result<(SpawnContext<'a, M>, impl Stream<Item = Result<Result<String, String>, Error>>), Error> {
+    pub fn new(
+        args: &Config,
+    ) -> Result<
+        (
+            SpawnContext<'a, M>,
+            impl Stream<Item = Result<Result<String, String>, Error>>,
+        ),
+        Error,
+    > {
         if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {
                 msg: "Max pending packets must be larger than IPC allocation batch".into(),
@@ -220,14 +224,13 @@ impl <'a, M: Send + 'static> SpawnContext<'a, M> {
         debug!("Spawn complete");
 
         let output_streams = Self::suricata_output_stream(&mut process);
-        let context = SpawnContext{
+        let context = SpawnContext {
             process: Some(process),
             awaiting_servers,
-            awaiting_readers
+            awaiting_readers,
         };
         debug!("Return stream and ctx");
         Ok((context, output_streams))
-
     }
 }
 
@@ -325,7 +328,10 @@ impl<'a, M> Ids<'a, M> {
         }
     }
 
-    pub async fn new_with_spawn_context(args: Config, mut spawn_context: SpawnContext<'a, M>) -> Result<Ids<'a, M>, Error> {
+    pub async fn new_with_spawn_context(
+        args: Config,
+        mut spawn_context: SpawnContext<'a, M>,
+    ) -> Result<Ids<'a, M>, Error> {
         if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {
                 msg: "Max pending packets must be larger than IPC allocation batch".into(),
@@ -344,7 +350,7 @@ impl<'a, M> Ids<'a, M> {
             let ipcs: Result<Vec<_>, _> = ipcs.into_iter().collect();
             ipcs
         }
-            .await?;
+        .await?;
 
         debug!("IPC Connection formed");
 
@@ -355,7 +361,8 @@ impl<'a, M> Ids<'a, M> {
             }
             let readers: Result<Vec<_>, _> = readers.into_iter().collect();
             readers
-        }.await?;
+        }
+        .await?;
 
         debug!("Eve readers formed.");
 
@@ -371,31 +378,28 @@ impl<'a, M> Ids<'a, M> {
         })
     }
 
-
     pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
     where
         M: Send + 'static,
     {
-
         let (spawn_ctx, stdout_stream) = SpawnContext::new(&args)?;
-        let pid : u32 = spawn_ctx
+        let pid: u32 = spawn_ctx
             .process
             .as_ref()
             .map(|p| p.id())
-            .ok_or(Error::Custom {msg: String::from("Missing process.")})?;
+            .ok_or(Error::Custom {
+                msg: String::from("Missing process."),
+            })?;
 
-
-        let stdout_fut = stdout_stream.for_each(move |r| {
-            match r {
-                Err(io) => {
-                    error!("Fatal io Error ({}) {:?}", pid, io)
-                },
-                Ok(Ok(line)) => {
-                    debug!("[Suricata ({})] {}", pid, line);
-                },
-                Ok(Err(line)) => {
-                    error!("[Suricata ({})] {}", pid, line);
-                }
+        let stdout_fut = stdout_stream.for_each(move |r| match r {
+            Err(io) => {
+                error!("Fatal io Error ({}) {:?}", pid, io)
+            }
+            Ok(Ok(line)) => {
+                debug!("[Suricata ({})] {}", pid, line);
+            }
+            Ok(Err(line)) => {
+                error!("[Suricata ({})] {}", pid, line);
             }
         });
         smol::spawn(stdout_fut).detach();

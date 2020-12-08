@@ -209,19 +209,18 @@ where
     let (spawn_ctx, stdout_stream) = SpawnContext::new(&ids_args)?;
     //You must spawn the stdout stream, if you dont, suricata may pause.
     println!("Spawn ctx is back!");
-    smol::spawn(stdout_stream.for_each(|r| {
-        match r {
-            Err(e) => {
-                error!("IO error: {:?}",e);
-            },
-            Ok(Err(e)) => {
-                warn!("Suricata error: {:?}", e);
-            },
-            Ok(Ok(l)) => {
-                info!("StdOut: {}", l);
-            }
+    smol::spawn(stdout_stream.for_each(|r| match r {
+        Err(e) => {
+            error!("IO error: {:?}", e);
         }
-    })).detach();
+        Ok(Err(e)) => {
+            warn!("Suricata error: {:?}", e);
+        }
+        Ok(Ok(l)) => {
+            info!("StdOut: {}", l);
+        }
+    }))
+    .detach();
 
     println!("Start IDS");
     let mut ids: Ids<M> = Ids::new_with_spawn_context(ids_args, spawn_ctx).await?;
