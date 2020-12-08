@@ -45,6 +45,21 @@ struct RenderedPlugin<'a> {
     config: String,
 }
 
+#[derive(Clone)]
+pub enum AdditionalConfig {
+    String(String),
+    IncludePath(PathBuf),
+}
+
+impl std::fmt::Display for AdditionalConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(s) => write!(f, "{}", s),
+            Self::IncludePath(path) => write!(f, "include: {:?}", path.as_path())
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
@@ -61,6 +76,7 @@ struct ConfigTemplate<'a> {
     detect_profile: DetectProfile,
     async_oneside: bool,
     filestore: &'a str,
+    additional_configs: Vec<AdditionalConfig>,
 }
 
 /// Runmodes for suricata
@@ -149,6 +165,8 @@ pub struct Config {
     pub async_oneside: bool,
     /// filestore configuration
     pub filestore: filestore::Filestore,
+    /// Additional configs, allow raw string or `include` to be appended to the suricata.yaml
+    pub additional_configs: Vec<AdditionalConfig>,
 }
 
 impl Default for Config {
@@ -211,6 +229,7 @@ impl Default for Config {
             detect_profile: DetectProfile::Medium,
             async_oneside: false,
             filestore: filestore::Filestore::default(),
+            additional_configs: vec![],
         }
     }
 }
@@ -262,6 +281,7 @@ impl Config {
             detect_profile: self.detect_profile.clone(),
             async_oneside: self.async_oneside,
             filestore: &filestore,
+            additional_configs: self.additional_configs.clone(),
         };
 
         debug!("Attempting to render");
