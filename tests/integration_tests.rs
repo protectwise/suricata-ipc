@@ -496,7 +496,7 @@ fn ids_process_4sics() {
     assert_eq!(alerts, 0, "Received {} alerts", alerts);
     assert!(dns > 27_000, "Received {} dns", dns);
     assert_eq!(http, 0, "Received {} http", http);
-    assert!(files > 0, "Received {} files", files);
+    assert_eq!(files, 0, "Received {} files", files);
     assert!(flows > 9_000, "Received {} flows", flows);
     assert_eq!(smtp, 0, "Received {} smtp", smtp);
     assert!(stats_messages > 1, "Received {} stats", stats_messages);
@@ -581,7 +581,7 @@ fn ids_process_files() {
         "Received {} files with hash",
         files_with_hash
     );
-    assert_eq!(flows, 9, "Received {} flows", flows);
+    assert!(flows >= 9, "Received {} flows", flows);
     assert_eq!(smtp, 0, "Received {} smtp", smtp);
     assert!(stats_messages > 0, "Received {} stats", stats_messages);
     assert_eq!(tls, 0, "Received {} tls", tls);

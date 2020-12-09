@@ -34,6 +34,7 @@ impl std::fmt::Display for FileState {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FileInfo {
+    #[serde(default)]
     pub filename: String,
     pub sid: Vec<usize>,
     pub gaps: bool,
