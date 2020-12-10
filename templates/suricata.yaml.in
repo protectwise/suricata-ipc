@@ -1079,3 +1079,9 @@ plugins:
 {% for plugin in plugins %}
 {{ plugin.config }}
 {% endfor %}
+
+## Additional configs rander below
+
+{% for additional_config in additional_configs %}
+{{ additional_config }}
+{% endfor %}

@@ -24,6 +24,8 @@ pub enum Error {
     Askama(#[from] askama::Error),
     #[error("MissingServerId: {0}")]
     MissingServerId(usize),
+    #[error("Missing Include")]
+    MissingInclude,
     #[error("{0}", msg)]
     Custom { msg: String },
 }
