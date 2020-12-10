@@ -54,12 +54,10 @@ pub enum AdditionalConfig {
 impl AdditionalConfig {
     pub fn check(&self) -> Result<(), Error> {
         match self {
-            AdditionalConfig::String(_) => {
-                Ok(())
-            }
+            AdditionalConfig::String(_) => Ok(()),
             AdditionalConfig::IncludePath(ref path) => {
                 if path.exists() {
-                    return Ok(())
+                    return Ok(());
                 }
                 return Err(Error::MissingInclude);
             }
@@ -71,7 +69,7 @@ impl std::fmt::Display for AdditionalConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::String(s) => write!(f, "{}", s),
-            Self::IncludePath(path) => write!(f, "include: {:?}", path.as_path())
+            Self::IncludePath(path) => write!(f, "include: {:?}", path.as_path()),
         }
     }
 }
@@ -280,9 +278,10 @@ impl Config {
             .collect();
         let filestore = self.filestore.render(&self.default_log_dir)?;
 
-        self.additional_configs.iter().map(|c|{
-            c.check()
-        }).collect::<Result<(), Error>>()?;
+        self.additional_configs
+            .iter()
+            .map(|c| c.check())
+            .collect::<Result<(), Error>>()?;
 
         let template = ConfigTemplate {
             runmode: self.runmode.clone(),
@@ -494,7 +493,9 @@ mod tests {
         http.custom = vec!["Accept-Encoding".to_string()];
         let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
         let mut cfg = Config::default();
-        cfg.additional_configs = vec![AdditionalConfig::String(String::from("some:\n  random::config"))];
+        cfg.additional_configs = vec![AdditionalConfig::String(String::from(
+            "some:\n  random::config",
+        ))];
         let rendered = cfg.render(ipc_plugin()).unwrap();
 
         let regex = regex::Regex::new("some:\n  random::config").unwrap();
@@ -532,9 +533,8 @@ mod tests {
         cfg.additional_configs = vec![AdditionalConfig::IncludePath(missing)];
         let rendered = cfg.render(ipc_plugin());
         match rendered {
-            Err(Error::MissingInclude) => {},
-            _ => panic!("Wrong or missing error for include")
+            Err(Error::MissingInclude) => {}
+            _ => panic!("Wrong or missing error for include"),
         }
     }
-
 }
