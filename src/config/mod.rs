@@ -68,8 +68,8 @@ impl AdditionalConfig {
 impl std::fmt::Display for AdditionalConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::String(s) => write!(f, "{}", s),
-            Self::IncludePath(path) => write!(f, "include: {:?}", path.as_path()),
+            Self::String(s) => write!(f, "{}\n", s),
+            Self::IncludePath(path) => write!(f, "include: {:?}\n", path.as_path()),
         }
     }
 }
@@ -493,14 +493,21 @@ mod tests {
         http.custom = vec!["Accept-Encoding".to_string()];
         let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
         let mut cfg = Config::default();
-        cfg.additional_configs = vec![AdditionalConfig::String(String::from(
-            "some:\n  random::config",
-        ))];
+        cfg.additional_configs = vec![
+            AdditionalConfig::String(String::from(
+                "some:\n  random::config",
+            )),
+            AdditionalConfig::String(String::from(
+                "has_a_newline: true",
+            )),
+        ];
         let rendered = cfg.render(ipc_plugin()).unwrap();
 
-        let regex = regex::Regex::new("some:\n  random::config").unwrap();
+        let first_match = "some:\n  random::config";
+        let second_match = "has_a_newline: true";
 
-        assert!(regex.find(&rendered).is_some());
+        assert!(rendered.find(&first_match).is_some());
+        assert!(rendered.find(&first_match).is_some());
     }
     #[test]
     fn test_render_additional_includes_found_file() {
@@ -514,7 +521,6 @@ mod tests {
         let existes = PathBuf::from(tempfile.path());
         cfg.additional_configs = vec![AdditionalConfig::IncludePath(existes)];
         let rendered = cfg.render(ipc_plugin()).unwrap();
-        println!("Rendered: {}", rendered);
 
         let mat = format!("include: {:?}", tempfile.path());
 
