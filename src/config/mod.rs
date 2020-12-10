@@ -494,12 +494,8 @@ mod tests {
         let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
         let mut cfg = Config::default();
         cfg.additional_configs = vec![
-            AdditionalConfig::String(String::from(
-                "some:\n  random::config",
-            )),
-            AdditionalConfig::String(String::from(
-                "has_a_newline: true",
-            )),
+            AdditionalConfig::String(String::from("some:\n  random::config")),
+            AdditionalConfig::String(String::from("has_a_newline: true")),
         ];
         let rendered = cfg.render(ipc_plugin()).unwrap();
 
