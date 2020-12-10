@@ -1066,7 +1066,7 @@ reference-config-file: {{ suricata_config_path }}/reference.config
 # searched for in the same directory as this configuration file. You may
 # use absolute pathnames too.
 # You can specify more than 2 configuration files, if needed.
-#include: include1.yaml
+#include: 1.yaml
 #include: include2.yaml
 
 plugins:
@@ -1078,4 +1078,10 @@ plugins:
 {{ ipc_plugin.config }}
 {% for plugin in plugins %}
 {{ plugin.config }}
+{% endfor %}
+
+## Additional configs rander below
+
+{% for additional_config in additional_configs %}
+{{ additional_config }}
 {% endfor %}

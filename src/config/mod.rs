@@ -45,6 +45,35 @@ struct RenderedPlugin<'a> {
     config: String,
 }
 
+#[derive(Clone)]
+pub enum AdditionalConfig {
+    String(String),
+    IncludePath(PathBuf),
+}
+
+impl AdditionalConfig {
+    pub fn check(&self) -> Result<(), Error> {
+        match self {
+            AdditionalConfig::String(_) => Ok(()),
+            AdditionalConfig::IncludePath(ref path) => {
+                if path.exists() {
+                    return Ok(());
+                }
+                return Err(Error::MissingInclude);
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for AdditionalConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(s) => write!(f, "{}\n", s),
+            Self::IncludePath(path) => write!(f, "include: {:?}\n", path.as_path()),
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "suricata.yaml.in", escape = "none")]
 struct ConfigTemplate<'a> {
@@ -61,6 +90,7 @@ struct ConfigTemplate<'a> {
     detect_profile: DetectProfile,
     async_oneside: bool,
     filestore: &'a str,
+    additional_configs: Vec<AdditionalConfig>,
 }
 
 /// Runmodes for suricata
@@ -149,6 +179,8 @@ pub struct Config {
     pub async_oneside: bool,
     /// filestore configuration
     pub filestore: filestore::Filestore,
+    /// Additional configs, allow raw string or `include` to be appended to the suricata.yaml
+    pub additional_configs: Vec<AdditionalConfig>,
 }
 
 impl Default for Config {
@@ -211,6 +243,7 @@ impl Default for Config {
             detect_profile: DetectProfile::Medium,
             async_oneside: false,
             filestore: filestore::Filestore::default(),
+            additional_configs: vec![],
         }
     }
 }
@@ -245,6 +278,11 @@ impl Config {
             .collect();
         let filestore = self.filestore.render(&self.default_log_dir)?;
 
+        self.additional_configs
+            .iter()
+            .map(|c| c.check())
+            .collect::<Result<(), Error>>()?;
+
         let template = ConfigTemplate {
             runmode: self.runmode.clone(),
             rules: &rules,
@@ -262,6 +300,7 @@ impl Config {
             detect_profile: self.detect_profile.clone(),
             async_oneside: self.async_oneside,
             filestore: &filestore,
+            additional_configs: self.additional_configs.clone(),
         };
 
         debug!("Attempting to render");
@@ -284,6 +323,7 @@ mod tests {
 
     use crate::config::output::OutputType;
     use crate::config::InternalIps;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_internal_ip_display() {
@@ -443,5 +483,60 @@ mod tests {
         let regex = regex::Regex::new(r#"filetype:\s+unix_stream\s*[\r\n]\s*filename: test.socket.Http.socket\s*[\r\n](.*[\r\n])*\s*types:\s*[\r\n]*\s*- http:\s*(.*[\r\n])*\s*extended: yes\s*(.*[\r\n])*\s*custom: \[Accept\-Encoding\]"#).unwrap();
 
         assert!(regex.find(&rendered).is_some());
+    }
+
+    #[test]
+    fn test_render_additional_includes_string() {
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let mut http = output::Http::new(eve_config());
+        http.extended = true;
+        http.custom = vec!["Accept-Encoding".to_string()];
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let mut cfg = Config::default();
+        cfg.additional_configs = vec![
+            AdditionalConfig::String(String::from("some:\n  random::config")),
+            AdditionalConfig::String(String::from("has_a_newline: true")),
+        ];
+        let rendered = cfg.render(ipc_plugin()).unwrap();
+
+        let first_match = "some:\n  random::config";
+        let second_match = "has_a_newline: true";
+
+        assert!(rendered.find(&first_match).is_some());
+        assert!(rendered.find(&first_match).is_some());
+    }
+    #[test]
+    fn test_render_additional_includes_found_file() {
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let mut http = output::Http::new(eve_config());
+        http.extended = true;
+        http.custom = vec!["Accept-Encoding".to_string()];
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let mut cfg = Config::default();
+        let tempfile = NamedTempFile::new().unwrap();
+        let existes = PathBuf::from(tempfile.path());
+        cfg.additional_configs = vec![AdditionalConfig::IncludePath(existes)];
+        let rendered = cfg.render(ipc_plugin()).unwrap();
+
+        let mat = format!("include: {:?}", tempfile.path());
+
+        assert!(rendered.find(&mat).is_some());
+    }
+
+    #[test]
+    fn test_render_additional_includes_missing_file() {
+        let eve_config = || eve::EveConfiguration::uds(PathBuf::from("test.socket"));
+        let mut http = output::Http::new(eve_config());
+        http.extended = true;
+        http.custom = vec!["Accept-Encoding".to_string()];
+        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let mut cfg = Config::default();
+        let missing = PathBuf::from("/nothere");
+        cfg.additional_configs = vec![AdditionalConfig::IncludePath(missing)];
+        let rendered = cfg.render(ipc_plugin());
+        match rendered {
+            Err(Error::MissingInclude) => {}
+            _ => panic!("Wrong or missing error for include"),
+        }
     }
 }
