@@ -1,6 +1,6 @@
 [package]
 name = "suricata-ipc"
-version = "0.16.0"
+version = "0.17.0"
 authors = ["dbcfd <bdbrowning2@gmail.com>", "kornstar11 <ben@protectwise.com>"]
 edition = "2018"
 description = "Library for sending packets to suricata and receiving output."
@@ -17,7 +17,7 @@ chrono = "0.4"
 lazy_static = "1.4"
 libc = "0.2"
 log = "0.4"
-packet-ipc = "0.14"
+packet-ipc = "0.15"
 pin-project = "0.4"
 prost = { version = "0.6", optional = true }
 prost-types = { version = "0.6", optional = true }

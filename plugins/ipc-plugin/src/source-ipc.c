@@ -216,9 +216,9 @@ TmEcode ReceiveIpcThreadInit(ThreadVars *tv, const void *initdata, void **data)
         SCLogError(SC_ERR_RUNMODE, "Thread init failed");
         SCReturnInt(TM_ECODE_FAILED);
     }
-    SCLogInfo("Creating client to %s", ptv->server_name);
+    SCLogInfo("Creating client to %s (channel size: %d)", ptv->server_name, ipc->ipc_to_suricata_channel_size);
 
-    if(!rs_create_ipc_client(ptv->server_name, &ipc_client)) {
+    if(!rs_create_ipc_client(ptv->server_name, &ipc_client, ipc->ipc_to_suricata_channel_size)) {
         SCLogError(SC_ERR_INVALID_ARGUMENT, "Failed to connect to client at %s", ptv->server_name);
         SCFree(ptv->server_name);
         SCFree(ptv);
