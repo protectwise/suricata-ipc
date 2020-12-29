@@ -122,9 +122,14 @@ static void *ParseIpcConfig(const char *servers)
 
     SCFree(servers_conf);
 
-    conf->allocation_batch = 100;
+    conf->allocation_batch = 100; // TODO Error if greater than the max_pending_packets setting.
     if(ConfGetInt("ipc-plugin.allocation-batch-size", &conf->allocation_batch) == 0) {
         SCLogInfo("No ipc-plugin.allocation-batch-size parameters, defaulting to 100");
+    }
+
+    conf->ipc_to_suricata_channel_size = 5;
+    if(ConfGetInt("ipc-plugin.ipc_to_suricata_channel_size", &conf->ipc_to_suricata_channel_size) == 0) {
+        SCLogInfo("No ipc-plugin.ipc_to_suricata_channel_size parameters, defaulting to 5");
     }
 
     conf->DerefFunc = IpcDerefConfig;

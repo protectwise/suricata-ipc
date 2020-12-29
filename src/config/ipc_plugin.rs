@@ -9,6 +9,7 @@ pub struct IpcPluginConfig {
     pub allocation_batch_size: usize,
     pub servers: usize,
     pub live: bool,
+    pub ipc_to_suricata_channel_size: usize,
 }
 
 impl Default for IpcPluginConfig {
@@ -29,6 +30,7 @@ impl IpcPluginConfig {
             allocation_batch_size: 1_000,
             servers: 1,
             live: true,
+            ipc_to_suricata_channel_size: 5,
         }
     }
 
@@ -47,6 +49,7 @@ impl IpcPluginConfig {
             allocation_batch_size: self.allocation_batch_size,
             servers: names,
             live: self.live,
+            ipc_to_suricata_channel_size: self.ipc_to_suricata_channel_size,
         };
         Ok((plugin, servers))
     }
@@ -59,6 +62,7 @@ pub struct IpcPlugin {
     pub allocation_batch_size: usize,
     pub servers: String,
     pub live: bool,
+    pub ipc_to_suricata_channel_size: usize,
 }
 
 impl Plugin for IpcPlugin {

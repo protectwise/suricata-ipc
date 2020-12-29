@@ -12,6 +12,8 @@ typedef struct IpcConfig_
     int nb_servers;
     /* Packet allocation batch size, defaults to 100 */
     intmax_t allocation_batch;
+    /* How large should the channel between ipc channel and suricata packet pool be. This channel contains batches of packets, NOT individual packets or bytes. 0 is unbounded. */
+    intmax_t ipc_to_suricata_channel_size;
 
     /* ref counter for shared config */
     SC_ATOMIC_DECLARE(unsigned int, ref);

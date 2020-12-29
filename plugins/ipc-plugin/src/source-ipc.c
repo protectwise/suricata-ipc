@@ -218,7 +218,7 @@ TmEcode ReceiveIpcThreadInit(ThreadVars *tv, const void *initdata, void **data)
     }
     SCLogInfo("Creating client to %s", ptv->server_name);
 
-    if(!rs_create_ipc_client(ptv->server_name, &ipc_client)) {
+    if(!rs_create_ipc_client(ptv->server_name, &ipc_client, ipc->ipc_to_suricata_channel_size)) {
         SCLogError(SC_ERR_INVALID_ARGUMENT, "Failed to connect to client at %s", ptv->server_name);
         SCFree(ptv->server_name);
         SCFree(ptv);

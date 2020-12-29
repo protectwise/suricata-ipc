@@ -106,10 +106,14 @@ pub extern "C" fn rs_ipc_populate_packets(ipc: *mut IpcClient, packets: *mut *mu
 }
 
 #[no_mangle]
-pub extern "C" fn rs_create_ipc_client(server_name: *const std::os::raw::c_char, client: *mut *mut IpcClient) -> u32 {
+pub extern "C" fn rs_create_ipc_client(server_name: *const std::os::raw::c_char, client: *mut *mut IpcClient, channel_size: u64) -> u32 {
     let server = unsafe { std::ffi::CStr::from_ptr(server_name) };
     if let Ok(s) = server.to_str() {
-        if let Ok(ipc) = Client::new(s.to_string()) {
+        let channel_size = match channel_size {
+            0 => None,
+            other => Some(other), //bounded
+        };
+        if let Ok(ipc) = Client::new_with_size(s.to_string(), channel_size) {
             let raw = Box::into_raw(Box::new(IpcClient { inner: ipc }));
             unsafe { *client = raw };
             1
