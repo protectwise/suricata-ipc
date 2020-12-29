@@ -19,6 +19,8 @@
 #include "util-device.h"
 #include <stdio.h>
 
+extern intmax_t max_pending_packets;
+
 void InitializeRunMode() {
     int live_mode = 1;
     int conf_live_mode = 0;
@@ -125,6 +127,11 @@ static void *ParseIpcConfig(const char *servers)
     conf->allocation_batch = 100; // TODO Error if greater than the max_pending_packets setting.
     if(ConfGetInt("ipc-plugin.allocation-batch-size", &conf->allocation_batch) == 0) {
         SCLogInfo("No ipc-plugin.allocation-batch-size parameters, defaulting to 100");
+    }
+
+    if(max_pending_packets <= conf->allocation_batch) {
+        SCLogError(SC_ERR_RUNMODE, "Runmode start failed: max-pending-packets need to be higher than allocation-batch-size");
+        return NULL;
     }
 
     conf->ipc_to_suricata_channel_size = 5;
