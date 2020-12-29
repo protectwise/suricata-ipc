@@ -111,9 +111,9 @@ pub extern "C" fn rs_create_ipc_client(server_name: *const std::os::raw::c_char,
     if let Ok(s) = server.to_str() {
         let channel_size = match channel_size {
             0 => None,
-            other => Some(other), //bounded
+            other => Some(other as usize), //bounded
         };
-        if let Ok(ipc) = Client::new_with_size(s.to_string(), channel_size as usize) {
+        if let Ok(ipc) = Client::new_with_size(s.to_string(), channel_size) {
             let raw = Box::into_raw(Box::new(IpcClient { inner: ipc }));
             unsafe { *client = raw };
             1
