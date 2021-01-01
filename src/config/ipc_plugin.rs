@@ -30,7 +30,7 @@ impl IpcPluginConfig {
             allocation_batch_size: 1_000,
             servers: 1,
             live: true,
-            ipc_to_suricata_channel_size: 5,
+            ipc_to_suricata_channel_size: 1,
         }
     }
 

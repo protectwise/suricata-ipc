@@ -1,5 +1,5 @@
 ipc-plugin:
   live: {{ live }}
   allocation-batch-size: {{ allocation_batch_size }}
-  ipc_to_suricata_channel_size: {{ ipc_to_suricata_channel_size }}
+  ipc-to-suricata-channel-size: {{ ipc_to_suricata_channel_size }}
   servers: "{{ servers }}"

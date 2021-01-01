@@ -134,9 +134,9 @@ static void *ParseIpcConfig(const char *servers)
         return NULL;
     }
 
-    conf->ipc_to_suricata_channel_size = 5;
-    if(ConfGetInt("ipc-plugin.ipc_to_suricata_channel_size", &conf->ipc_to_suricata_channel_size) == 0) {
-        SCLogInfo("No ipc-plugin.ipc_to_suricata_channel_size parameters, defaulting to 5");
+    conf->ipc_to_suricata_channel_size = 1;
+    if(ConfGetInt("ipc-plugin.ipc-to-suricata-channel-size", &conf->ipc_to_suricata_channel_size) == 0) {
+        SCLogInfo("No ipc-plugin.ipc-to-suricata-channel-size parameters, defaulting to 1");
     }
 
     conf->DerefFunc = IpcDerefConfig;
