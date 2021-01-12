@@ -340,7 +340,7 @@ mod tests {
 
     fn ipc_plugin() -> IpcPlugin {
         let cfg = IpcPluginConfig {
-            ipc_to_suricata_channel_size: 1_000,
+            ipc_to_suricata_channel_size: 1,
             path: PathBuf::from("ipc-plugin.so"),
             allocation_batch_size: 100,
             servers: 1,
