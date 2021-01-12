@@ -1,5 +1,4 @@
 mod alert;
-mod date_format;
 mod dns;
 mod file;
 mod flow;
@@ -10,7 +9,6 @@ mod tcp;
 mod tls;
 
 pub use alert::{Alert, AlertFlowInfo, AlertInfo};
-pub use date_format::parse_date_time;
 pub use dns::{Dns, DnsAnswer, DnsEventType, DnsInfo, DnsQuery};
 pub use file::{File, FileInfo, FileState};
 pub use flow::{Flow, FlowInfo};
@@ -47,7 +45,6 @@ pub enum EventType {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Message {
-    #[serde(with = "date_format")]
     pub timestamp: DateTime<Utc>,
     #[serde(flatten)]
     pub event: EventType,
@@ -388,6 +385,20 @@ mod tests {
             assert!(!v.info.response_headers.is_empty());
         } else {
             panic!("Not http")
+        }
+    }
+
+    #[test]
+    fn should_decode_tls() {
+        let msg = r#"{"timestamp":"2013-09-15T15:52:16.727495-0600","flow_id":1763151386252222,"event_type":"tls","src_ip":"127.0.0.1","src_port":38964,"dest_ip":"127.0.0.1","dest_port":4430,"proto":"TCP","community_id":"1:tO6mWiPaHrt1i+ROisC8pmK8jQ4=","tls":{"subject":"CN=Test Certificate RSA","issuerdn":"CN=Test Certificate RSA"}}"#;
+
+        let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
+
+        if let EventType::Tls(v) = eve.event {
+            assert!(v.info.subject.is_some());
+            assert!(v.info.issuerdn.is_some());
+        } else {
+            panic!("Not tls")
         }
     }
 }

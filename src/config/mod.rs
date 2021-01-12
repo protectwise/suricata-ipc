@@ -190,6 +190,12 @@ impl Default for Config {
         } else {
             PathBuf::from("/var/log/suricata")
         };
+        let suricata_config_path =
+            if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
+                e
+            } else {
+                PathBuf::from("/etc/suricata")
+            };
         Config {
             runmode: Runmode::AutoFp,
             outputs: vec![
@@ -210,7 +216,7 @@ impl Default for Config {
                 ))),
             ],
             enable_community_id: true,
-            materialize_config_to: PathBuf::from("/etc/suricata/suricata-rs.yaml"),
+            materialize_config_to: suricata_config_path.join("suricata-rs.yaml"),
             exe_path: {
                 if let Some(e) = std::env::var_os("SURICATA_EXE").map(PathBuf::from) {
                     e
@@ -219,13 +225,7 @@ impl Default for Config {
                 }
             },
             rule_path: PathBuf::from("/etc/suricata/custom.rules"),
-            suricata_config_path: {
-                if let Some(e) = std::env::var_os("SURICATA_CONFIG_DIR").map(|s| PathBuf::from(s)) {
-                    e
-                } else {
-                    PathBuf::from("/etc/suricata")
-                }
-            },
+            suricata_config_path: suricata_config_path,
             internal_ips: InternalIps(vec![
                 String::from("10.0.0.0/8,172.16.0.0/12"),
                 String::from("e80:0:0:0:0:0:0:0/64"),
@@ -340,6 +340,7 @@ mod tests {
 
     fn ipc_plugin() -> IpcPlugin {
         let cfg = IpcPluginConfig {
+            ipc_to_suricata_channel_size: 1_000,
             path: PathBuf::from("ipc-plugin.so"),
             allocation_batch_size: 100,
             servers: 1,
@@ -491,7 +492,7 @@ mod tests {
         let mut http = output::Http::new(eve_config());
         http.extended = true;
         http.custom = vec!["Accept-Encoding".to_string()];
-        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let _outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
         let mut cfg = Config::default();
         cfg.additional_configs = vec![
             AdditionalConfig::String(String::from("some:\n  random::config")),
@@ -503,7 +504,7 @@ mod tests {
         let second_match = "has_a_newline: true";
 
         assert!(rendered.find(&first_match).is_some());
-        assert!(rendered.find(&first_match).is_some());
+        assert!(rendered.find(&second_match).is_some());
     }
     #[test]
     fn test_render_additional_includes_found_file() {
@@ -511,7 +512,7 @@ mod tests {
         let mut http = output::Http::new(eve_config());
         http.extended = true;
         http.custom = vec!["Accept-Encoding".to_string()];
-        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let _outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
         let mut cfg = Config::default();
         let tempfile = NamedTempFile::new().unwrap();
         let existes = PathBuf::from(tempfile.path());
@@ -529,7 +530,7 @@ mod tests {
         let mut http = output::Http::new(eve_config());
         http.extended = true;
         http.custom = vec!["Accept-Encoding".to_string()];
-        let outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
+        let _outputs: Vec<Box<dyn output::Output + Send + Sync>> = vec![Box::new(http)];
         let mut cfg = Config::default();
         let missing = PathBuf::from("/nothere");
         cfg.additional_configs = vec![AdditionalConfig::IncludePath(missing)];
