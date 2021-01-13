@@ -1,4 +1,3 @@
-use crate::eve::message::date_format;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +7,6 @@ pub struct AlertFlowInfo {
     pub pkts_toclient: usize,
     pub bytes_toserver: usize,
     pub bytes_toclient: usize,
-    #[serde(with = "date_format")]
     pub start: DateTime<Utc>,
 }
 
