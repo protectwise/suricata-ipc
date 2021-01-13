@@ -36,7 +36,7 @@ pub struct TlsInfo {
     #[serde(default)]
     pub ja3: Option<Ja3>,
     #[serde(default)]
-    pub ja3S: Option<Ja3S>,
+    pub ja3s: Option<Ja3S>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
