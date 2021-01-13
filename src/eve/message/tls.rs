@@ -35,6 +35,8 @@ pub struct TlsInfo {
     pub chain: Vec<String>,
     #[serde(default)]
     pub ja3: Option<Ja3>,
+    #[serde(default)]
+    pub ja3S: Option<Ja3S>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -42,7 +44,13 @@ pub struct Ja3 {
     #[serde(default)]
     pub hash: Option<String>,
     #[serde(default)]
-    pub data: Option<String>,
+    pub string: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Ja3S {
+    #[serde(default)]
+    pub hash: Option<String>,
     #[serde(default)]
     pub string: Option<String>,
 }
