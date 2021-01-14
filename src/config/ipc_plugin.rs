@@ -34,7 +34,7 @@ impl IpcPluginConfig {
         }
     }
 
-    pub fn into_plugin<'a>(self) -> Result<(IpcPlugin, Vec<packet_ipc::Server<'a>>), Error> {
+    pub fn into_plugin(self) -> Result<(IpcPlugin, Vec<packet_ipc::Server>), Error> {
         let mut names = Vec::with_capacity(self.servers);
         let mut servers = Vec::with_capacity(self.servers);
         for _ in 0..self.servers {

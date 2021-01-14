@@ -120,13 +120,13 @@ use std::time::Duration;
 
 //const READER_BUFFER_SIZE: usize = 128;
 
-pub struct SpawnContext<'a, M> {
+pub struct SpawnContext<M> {
     process: Option<std::process::Child>,
-    awaiting_servers: Vec<Task<Result<packet_ipc::ConnectedIpc<'a>, Error>>>,
+    awaiting_servers: Vec<Task<Result<packet_ipc::ConnectedIpc, Error>>>,
     awaiting_readers: Vec<Task<Result<EveReader<M>, Error>>>,
 }
 
-impl<'a, M: Send + 'static> SpawnContext<'a, M> {
+impl<M: Send + 'static> SpawnContext<M> {
     fn spawn_suricata(args: &Config) -> Result<std::process::Child, Error> {
         let mut command = std::process::Command::new(args.exe_path.to_str().unwrap());
         let server_args: Vec<String> = vec![
@@ -191,7 +191,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
         args: &Config,
     ) -> Result<
         (
-            SpawnContext<'a, M>,
+            SpawnContext<M>,
             impl Stream<Item = Result<Result<String, String>, Error>>,
         ),
         Error,
@@ -234,7 +234,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
     }
 }
 
-impl<'a, T> Drop for SpawnContext<'a, T> {
+impl<T> Drop for SpawnContext<T> {
     fn drop(&mut self) {
         let process = match std::mem::replace(&mut self.process, None) {
             Some(process) => process,
@@ -246,17 +246,17 @@ impl<'a, T> Drop for SpawnContext<'a, T> {
     }
 }
 
-pub struct Ids<'a, T> {
+pub struct Ids<T> {
     close_grace_period: Option<Duration>,
     readers: Vec<EveReader<T>>,
     process: Option<std::process::Child>,
-    ipc_servers: Vec<packet_ipc::ConnectedIpc<'a>>,
+    ipc_servers: Vec<packet_ipc::ConnectedIpc>,
 }
 
-unsafe impl<'a, T> Send for Ids<'a, T> {}
-unsafe impl<'a, T> Sync for Ids<'a, T> {}
+unsafe impl<T> Send for Ids<T> {}
+unsafe impl<T> Sync for Ids<T> {}
 
-impl<'a, T> Drop for Ids<'a, T> {
+impl<T> Drop for Ids<T> {
     fn drop(&mut self) {
         let _ = self.close();
 
@@ -292,10 +292,10 @@ impl<'a, T> Drop for Ids<'a, T> {
     }
 }
 
-impl<'a, M> Ids<'a, M> {
-    pub fn send<'b, T: AsIpcPacket + 'a>(
-        &'a self,
-        packets: &'b [T],
+impl<M> Ids<M> {
+    pub fn send<T: AsIpcPacket>(
+        &self,
+        packets: &[T],
         server_id: usize,
     ) -> Result<usize, Error> {
         if let Some(ipc_server) = self.ipc_servers.get(server_id) {
@@ -330,8 +330,8 @@ impl<'a, M> Ids<'a, M> {
 
     pub async fn new_with_spawn_context(
         args: Config,
-        mut spawn_context: SpawnContext<'a, M>,
-    ) -> Result<Ids<'a, M>, Error> {
+        mut spawn_context: SpawnContext<M>,
+    ) -> Result<Ids<M>, Error> {
         if (args.max_pending_packets as usize) < args.ipc_plugin.allocation_batch_size {
             return Err(Error::Custom {
                 msg: "Max pending packets must be larger than IPC allocation batch".into(),
@@ -378,7 +378,7 @@ impl<'a, M> Ids<'a, M> {
         })
     }
 
-    pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
+    pub async fn new(args: Config) -> Result<Ids<M>, Error>
     where
         M: Send + 'static,
     {

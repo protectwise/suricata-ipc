@@ -17,7 +17,8 @@ chrono = "0.4"
 lazy_static = "1.4"
 libc = "0.2"
 log = "0.4"
-packet-ipc = "0.15.0"
+#packet-ipc = "0.15.0"
+packet-ipc = { git = "https://github.com/protectwise/packet-ipc", branch = "drop_lieftime_from_sender" }
 pin-project = "0.4"
 prost = { version = "0.6", optional = true }
 prost-types = { version = "0.6", optional = true }
