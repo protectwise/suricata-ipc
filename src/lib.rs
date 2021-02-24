@@ -430,14 +430,14 @@ fn connect_uds<M: Send + 'static>(
     output_type: OutputType,
     opt_size: Option<usize>,
 ) -> Result<smol::Task<Result<EveReader<M>, Error>>, Error> {
-    debug!(
+    info!(
         "Spawning acceptor for uds connection from suricata for {:?}",
         path
     );
     if path.exists() {
         std::fs::remove_file(&path)?;
     }
-    debug!("Listening to {:?} for event type {:?}", path, output_type);
+    info!("Listening to {:?} for event type {:?}", path, output_type);
     let listener = std::os::unix::net::UnixListener::bind(path.clone()).map_err(Error::from)?;
     let r = match smol::Async::new(listener).map_err(Error::from) {
         Err(e) => smol::spawn(async move { Err(e) }),
@@ -445,7 +445,7 @@ fn connect_uds<M: Send + 'static>(
             listener.accept().await.map_err(Error::from).map(|t| {
                 let (uds_connection, uds_addr) = t;
 
-                debug!("UDS connection formed from {:?}", uds_addr);
+                info!("UDS connection formed from {:?}", uds_addr);
 
                 if let Some(sz) = opt_size {
                     EveReader::with_capacity(path, output_type, uds_connection, sz)
