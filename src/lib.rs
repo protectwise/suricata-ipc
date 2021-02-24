@@ -210,7 +210,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
             .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
             .collect();
 
-        debug!("Readers are listening, starting suricata");
+        info!("Readers are listening, starting suricata");
 
         let (ipc_plugin, servers) = args.ipc_plugin.clone().into_plugin()?;
         args.materialize(ipc_plugin)?;
@@ -221,7 +221,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
             .collect();
 
         let mut process = Self::spawn_suricata(&args)?;
-        debug!("Spawn complete");
+        info!("Spawn complete");
 
         let output_streams = Self::suricata_output_stream(&mut process);
         let context = SpawnContext {
@@ -229,7 +229,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
             awaiting_servers,
             awaiting_readers,
         };
-        debug!("Return stream and ctx");
+        info!("Return stream and ctx");
         Ok((context, output_streams))
     }
 }
@@ -352,7 +352,7 @@ impl<'a, M> Ids<'a, M> {
         }
         .await?;
 
-        debug!("IPC Connection formed");
+        info!("IPC Connection formed");
 
         let readers = async move {
             let mut readers = Vec::with_capacity(awaiting_readers.len());
@@ -364,10 +364,10 @@ impl<'a, M> Ids<'a, M> {
         }
         .await?;
 
-        debug!("Eve readers formed.");
+        info!("Eve readers formed.");
 
         if !readers.is_empty() {
-            debug!("{} Eve Readers connected", readers.len());
+            info!("{} Eve Readers connected", readers.len());
         }
 
         Ok(Ids {
