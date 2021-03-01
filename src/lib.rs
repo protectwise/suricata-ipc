@@ -36,7 +36,7 @@
 //!         let readers = futures::stream::select_all(readers.into_iter());
 //!
 //!         let packets: Vec<Packet> = vec![];
-//!         ids.send(packets.as_slice()).expect("Failed to send packets");
+//!         ids.send(packets.as_slice(), 0).expect("Failed to send packets");
 //!
 //!         let alerts: Result<Vec<_>, Error> = readers.try_collect().await;
 //!         let alerts = alerts.expect("Failed to parse alerts");

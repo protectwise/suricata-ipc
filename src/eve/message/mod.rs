@@ -375,6 +375,20 @@ mod tests {
     }
 
     #[test]
+    fn should_decode_file_with_missing_name() {
+        let msg = r#"{"timestamp":"2016-06-16T15:07:06.802717-0600","flow_id":2180082800938789,"event_type":"fileinfo","src_ip":"10.3.1.1","src_port":445,"dest_ip":"10.3.1.2","dest_port":56746,"proto":"TCP","smb":{"id":27,"dialect":"2.02","command":"SMB2_COMMAND_READ","status":"STATUS_END_OF_FILE","status_code":"0xc0000011","session_id":706141969,"tree_id":201977730,"filename":"","share":"","fuid":"96c8e081-0000-0000-441e-a47e00000000"},"app_proto":"smb","fileinfo":{"sid":[],"gaps":false,"state":"CLOSED","stored":false,"size":3109,"tx_id":26}}"#;
+
+        let eve = Message::try_from(msg.as_bytes().as_ref()).expect("Failed to read eve message");
+
+        if let EventType::File(v) = eve.event {
+            assert!(v.info.filename.is_empty());
+            assert!(!v.info.stored);
+        } else {
+            panic!("Not http")
+        }
+    }
+
+    #[test]
     fn should_decode_http() {
         let msg = r#"{"timestamp":"2020-08-05T13:32:29.341318+0000","flow_id":1925256485615034,"event_type":"http","src_ip":"16.0.0.1","src_port":41668,"dest_ip":"48.0.0.1","dest_port":80,"proto":"TCP","tx_id":0,"community_id":"1:p1ceBUuGcR8ILP4a2kUZp97NUQM=","http":{"hostname":"22.0.0.3","url":"/3384","http_user_agent":"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; SV1; .NET CLR 1.1.4322; .NET CLR 2.0.50727)","http_content_type":"text/html","request_headers":[{"name":"Host","value":"22.0.0.3"},{"name":"Connection","value":"Keep-Alive"},{"name":"User-Agent","value":"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; SV1; .NET CLR 1.1.4322; .NET CLR 2.0.50727)"},{"name":"Accept","value":"*/*"},{"name":"Accept-Language","value":"en-us"},{"name":"Accept-Encoding","value":"gzip, deflate, compress"}],"response_headers":[{"name":"Server","value":"Microsoft-IIS/6.0"},{"name":"Content-Type","value":"text/html"},{"name":"Content-Length","value":"32000"}]}}"#;
 
