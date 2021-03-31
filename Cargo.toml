@@ -13,7 +13,11 @@ exclude = ["resources/*.pcap"]
 
 [dependencies]
 askama = "0.10"
+async-executor = "1.1.0"
+async-io = "1.1.2"
+blocking = "1.0.0"
 chrono = { version = "0.4", features = ["serde"] }
+futures-lite = "1.11.0"
 lazy_static = "1.4"
 libc = "0.2"
 log = "0.4"
@@ -25,7 +29,7 @@ regex = "1.3"
 rdkafka = { version = "0.24", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-smol = "1.2"
+smol = { version = "1.2", optional = true }
 thiserror = "1"
 tonic = { version = "0.2", optional = true }
 
@@ -35,15 +39,17 @@ criterion = "0.2"
 env_logger = "0.7"
 futures = "0.3"
 net-parser-rs = "0.2"
+smol = "1.2"
 tempfile = "3.0"
 
 [build-dependencies]
 tonic-build = { version = "0.2", optional = true }
 
 [features]
-default = []
+default = ["bundle-smol"]
 protobuf = ["prost", "prost-types", "tonic", "tonic-build"]
 kafka = ["rdkafka"]
+bundle-smol = ["smol"]
 
 [[bench]]
 path = "benches/bench.rs"

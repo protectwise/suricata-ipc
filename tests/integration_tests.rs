@@ -21,6 +21,20 @@ fn prepare_executor() {
     std::env::set_var("SMOL_THREADS", "5");
 }
 
+#[cfg(not(feature = "bundle-smol"))]
+#[derive(Copy, Clone)]
+struct SmolSpawn;
+
+#[cfg(not(feature = "bundle-smol"))]
+impl suricata_ipc::Spawn for SmolSpawn {
+    fn spawn<T: Send + 'static, F: std::future::Future<Output = T> + Send + 'static>(
+        &self,
+        future: F,
+    ) -> smol::Task<T> {
+        smol::spawn(future)
+    }
+}
+
 struct WrapperPacket<'a> {
     inner: &'a net_parser_rs::PcapRecord<'a>,
 }
@@ -206,7 +220,10 @@ where
     ids_args.ipc_plugin = ipc_plugin;
     ids_args.filestore = Filestore::new(None);
 
+    #[cfg(feature = "bundle-smol")]
     let (spawn_ctx, stdout_stream) = SpawnContext::new(&ids_args)?;
+    #[cfg(not(feature = "bundle-smol"))]
+    let (spawn_ctx, stdout_stream) = SpawnContext::with_spawn(&ids_args, SmolSpawn)?;
     //You must spawn the stdout stream, if you dont, suricata may pause.
     println!("Spawn ctx is back!");
     smol::spawn(stdout_stream.for_each(|r| match r {

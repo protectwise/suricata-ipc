@@ -2,17 +2,17 @@ use crate::errors::Error;
 use crate::eve::json;
 
 use crate::config::output::OutputType;
+use futures_lite::io::AsyncRead;
+use futures_lite::stream::Stream;
 use log::*;
 use pin_project::pin_project;
-use smol::io::AsyncRead;
-use smol::stream::Stream;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 const DEFAULT_BUFFER_SIZE: usize = 131_070;
 
-type AsyncStream = smol::Async<std::os::unix::net::UnixStream>;
+type AsyncStream = async_io::Async<std::os::unix::net::UnixStream>;
 
 #[pin_project]
 pub struct EveReader<T> {
@@ -69,7 +69,7 @@ where
             this.buf
                 .resize_with(*this.buffer_size - last_offset, Default::default);
         }
-        match smol::ready!(this
+        match futures_lite::ready!(this
             .inner
             .as_mut()
             .poll_read(cx, &mut this.buf[last_offset..]))
