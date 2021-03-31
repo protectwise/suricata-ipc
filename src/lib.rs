@@ -107,18 +107,41 @@ pub mod proto {
 }
 
 use crate::config::output::{Output, OutputType};
+use async_executor::Task;
 use config::Config;
+use futures_lite::future::or;
+use futures_lite::io::AsyncBufReadExt;
+use futures_lite::stream::{Stream, StreamExt};
 use log::*;
 use packet_ipc::ConnectedIpc;
 use prelude::*;
-use smol::future::or;
-use smol::io::AsyncBufReadExt;
-use smol::stream::{Stream, StreamExt};
-use smol::Task;
+use std::future::Future;
 use std::path::PathBuf;
 use std::time::Duration;
 
 //const READER_BUFFER_SIZE: usize = 128;
+
+/// Implement this trait to specify asynchronous Task spawning logic
+pub trait Spawn: Copy {
+    fn spawn<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        future: F,
+    ) -> Task<T>;
+}
+
+#[cfg(feature = "bundle-smol")]
+#[derive(Copy, Clone)]
+struct SmolSpawn;
+
+#[cfg(feature = "bundle-smol")]
+impl Spawn for SmolSpawn {
+    fn spawn<T: Send + 'static, F: Future<Output = T> + Send + 'static>(
+        &self,
+        future: F,
+    ) -> Task<T> {
+        smol::spawn(future)
+    }
+}
 
 pub struct SpawnContext<'a, M> {
     process: Option<std::process::Child>,
@@ -153,8 +176,8 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
     ) -> impl Stream<Item = Result<Result<String, String>, Error>> {
         let stdout_complete = {
             let o = process.stdout.take().unwrap();
-            let o = smol::Unblock::new(o);
-            let reader = smol::io::BufReader::new(o);
+            let o = blocking::Unblock::new(o);
+            let reader = futures_lite::io::BufReader::new(o);
             reader
                 .lines()
                 .map(move |t| match t {
@@ -165,8 +188,8 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
         };
         let stderr_complete = {
             let o = process.stderr.take().unwrap();
-            let o = smol::Unblock::new(o);
-            let reader = smol::io::BufReader::new(o);
+            let o = blocking::Unblock::new(o);
+            let reader = futures_lite::io::BufReader::new(o);
             reader
                 .lines()
                 .map(move |t| match t {
@@ -175,7 +198,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
                 })
                 .fuse()
         };
-        smol::stream::or(stdout_complete, stderr_complete).boxed()
+        futures_lite::stream::or(stdout_complete, stderr_complete).boxed()
     }
 
     ///
@@ -187,8 +210,32 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
     ///
     /// Warning, you MUST consume the `Stream` if you don't Suricata will eventiually lock up.
     /// If you are unsure about any of this use `Ids::new()`
+    #[cfg(feature = "bundle-smol")]
     pub fn new(
         args: &Config,
+    ) -> Result<
+        (
+            SpawnContext<'a, M>,
+            impl Stream<Item = Result<Result<String, String>, Error>>,
+        ),
+        Error,
+    > {
+        Self::with_spawn(args, SmolSpawn)
+    }
+
+    /// When suricata starts it will want to process rules, before connecting to the ipc sockets or alert sockets.
+    /// During this time it is still possible that suricata may not start, so we expose the SpawnContext along side a
+    /// Stream. The `SpawnContext` Should not be used by you (you jerk). The Stream however, should be watched for completion
+    /// When the Stream completes, you may consider Suricata dead. The streams element is a Result<String, String> representing
+    /// stdout, stderr respectively.
+    ///
+    /// Warning, you MUST consume the `Stream` if you don't Suricata will eventiually lock up.
+    /// If you are unsure about any of this use `Ids::new()`
+    ///
+    /// This method allows injection of task spawner so client code can control executor logic
+    pub fn with_spawn<S: Spawn>(
+        args: &Config,
+        spawn: S,
     ) -> Result<
         (
             SpawnContext<'a, M>,
@@ -207,7 +254,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
         let awaiting_readers: Vec<_> = args
             .outputs
             .iter()
-            .flat_map(|c| connect_output::<M>(c, opt_size.clone()))
+            .flat_map(|c| connect_output::<M, S>(c, opt_size.clone(), spawn))
             .collect();
 
         debug!("Readers are listening, starting suricata");
@@ -217,7 +264,7 @@ impl<'a, M: Send + 'static> SpawnContext<'a, M> {
 
         let awaiting_servers: Vec<Task<Result<ConnectedIpc, Error>>> = servers
             .into_iter()
-            .map(|s| smol::spawn(async move { s.accept().map_err(Error::PacketIpc) }))
+            .map(|s| spawn.spawn(async move { s.accept().map_err(Error::PacketIpc) }))
             .collect();
 
         let mut process = Self::spawn_suricata(&args)?;
@@ -270,8 +317,8 @@ impl<'a, T> Drop for Ids<'a, T> {
         unsafe { libc::kill(pid, libc::SIGTERM) };
 
         if let Some(close_grace_period) = self.close_grace_period {
-            smol::block_on(or(
-                smol::unblock(move || {
+            futures_lite::future::block_on(or(
+                blocking::unblock(move || {
                     if let Err(e) = process.wait() {
                         error!(
                             "Unexpected error while waiting on suricata process: {:?}",
@@ -281,7 +328,7 @@ impl<'a, T> Drop for Ids<'a, T> {
                 }),
                 async move {
                     // If process doesn't end during grace period, send it a sigkill
-                    smol::Timer::after(close_grace_period).await;
+                    async_io::Timer::after(close_grace_period).await;
                     // We already have a mutable borrow in process.wait(), send signal to pid
                     unsafe { libc::kill(pid, libc::SIGKILL) };
                 },
@@ -378,11 +425,20 @@ impl<'a, M> Ids<'a, M> {
         })
     }
 
+    #[cfg(feature = "bundle-smol")]
     pub async fn new(args: Config) -> Result<Ids<'a, M>, Error>
     where
         M: Send + 'static,
     {
-        let (spawn_ctx, stdout_stream) = SpawnContext::new(&args)?;
+        Self::with_spawn(args, SmolSpawn).await
+    }
+
+    pub async fn with_spawn<S: Spawn + 'static>(args: Config, spawn: S) -> Result<Ids<'a, M>, Error>
+    where
+        M: Send + 'static,
+    {
+        let (spawn_ctx, stdout_stream) = SpawnContext::with_spawn(&args, spawn)?;
+
         let pid: u32 = spawn_ctx
             .process
             .as_ref()
@@ -402,7 +458,7 @@ impl<'a, M> Ids<'a, M> {
                 error!("[Suricata ({})] {}", pid, line);
             }
         });
-        smol::spawn(stdout_fut).detach();
+        spawn.spawn(stdout_fut).detach();
 
         info!("SpawnContext created");
 
@@ -410,13 +466,14 @@ impl<'a, M> Ids<'a, M> {
     }
 }
 
-fn connect_output<M: Send + 'static>(
+fn connect_output<M: Send + 'static, S: Spawn>(
     output: &Box<dyn Output + Send + Sync>,
     opt_size: Option<usize>,
-) -> Option<smol::Task<Result<EveReader<M>, Error>>> {
+    spawn: S,
+) -> Option<Task<Result<EveReader<M>, Error>>> {
     if let Some(path) = output.eve().listener(&output.output_type()) {
-        let r = match connect_uds(path, output.output_type().clone(), opt_size) {
-            Err(e) => smol::spawn(async move { Err(e) }),
+        let r = match connect_uds(path, output.output_type().clone(), opt_size, spawn) {
+            Err(e) => spawn.spawn(async move { Err(e) }),
             Ok(t) => t,
         };
         Some(r)
@@ -425,11 +482,12 @@ fn connect_output<M: Send + 'static>(
     }
 }
 
-fn connect_uds<M: Send + 'static>(
+fn connect_uds<M: Send + 'static, S: Spawn>(
     path: PathBuf,
     output_type: OutputType,
     opt_size: Option<usize>,
-) -> Result<smol::Task<Result<EveReader<M>, Error>>, Error> {
+    spawn: S,
+) -> Result<Task<Result<EveReader<M>, Error>>, Error> {
     debug!(
         "Spawning acceptor for uds connection from suricata for {:?}",
         path
@@ -439,9 +497,9 @@ fn connect_uds<M: Send + 'static>(
     }
     debug!("Listening to {:?} for event type {:?}", path, output_type);
     let listener = std::os::unix::net::UnixListener::bind(path.clone()).map_err(Error::from)?;
-    let r = match smol::Async::new(listener).map_err(Error::from) {
-        Err(e) => smol::spawn(async move { Err(e) }),
-        Ok(listener) => smol::spawn(async move {
+    let r = match async_io::Async::new(listener).map_err(Error::from) {
+        Err(e) => spawn.spawn(async move { Err(e) }),
+        Ok(listener) => spawn.spawn(async move {
             listener.accept().await.map_err(Error::from).map(|t| {
                 let (uds_connection, uds_addr) = t;
 
